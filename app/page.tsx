@@ -30,7 +30,9 @@ export default async function HomePage() {
 
   return (
     <div className="space-y-8">
-      <SpotifyTokenCapture />
+      <Suspense fallback={null}>
+        <SpotifyTokenCapture />
+      </Suspense>
       <Suspense fallback={null}>
         <SpotifyErrorDisplay />
       </Suspense>
