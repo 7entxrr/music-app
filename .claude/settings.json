@@ -1,7 +1,24 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx create-next-app@latest . --typescript --tailwind --app --no-src-dir --no-git --import-alias \"@/*\" --eslint)"
+      "Bash(npx create-next-app@latest . --typescript --tailwind --app --no-src-dir --no-git --import-alias \"@/*\" --eslint)",
+      "Bash(npm install *)",
+      "Bash(mkdir -p /Users/akki/Documents/music-web/app/api/artist/\\\\[id\\\\] /Users/akki/Documents/music-web/app/api/track/\\\\[id\\\\] /Users/akki/Documents/music-web/app/artist/\\\\[id\\\\] /Users/akki/Documents/music-web/app/album/\\\\[id\\\\])",
+      "Bash(npx tsc *)",
+      "Bash(npm run *)",
+      "Bash(ls /Users/akki/.claude/projects/-Users-akki-Documents-music-web/memory/ 2>/dev/null || mkdir -p /Users/akki/.claude/projects/-Users-akki-Documents-music-web/memory/)",
+      "Bash(curl -s -o /dev/null -w '%{http_code}' 'https://api.spotify.com/v1/me/top/tracks?time_range=long_term&limit=5' -H 'Authorization: Bearer BQCmxQU0WnuQz2qwuJxdvgHHIb0cdLlyt1HJGXKqsnekb5qkL2MrTllNgY6PjWaJe2m9TZqB7w4MhQpJ5nS4dU5-JMeKrhO8IIawn8snh6KgFb0Q5kZhIP5hiU2GmqTBqz5yRf19lelBl5plq-d0YUJbjc_CtoUotKq5yrH6O_yTDeiF0fU14IDEWCyelyCiKwNbHl06tW54oyYvDUS4vi003ReRy2TJLX0hE_5BB6lfbKiR8LIijHBKHHOBpBhyztrMXuElfFBRMt4pZw6JgYpmSVTjVvr_t1egek5nBvyyvFnn1o7IScvdmNrYGikdPealyA')",
+      "Bash(curl -s 'https://api.spotify.com/v1/me/top/tracks?time_range=long_term&limit=5' -H 'Authorization: Bearer BQCmxQU0WnuQz2qwuJxdvgHHIb0cdLlyt1HJGXKqsnekb5qkL2MrTllNgY6PjWaJe2m9TZqB7w4MhQpJ5nS4dU5-JMeKrhO8IIawn8snh6KgFb0Q5kZhIP5hiU2GmqTBqz5yRf19lelBl5plq-d0YUJbjc_CtoUotKq5yrH6O_yTDeiF0fU14IDEWCyelyCiKwNbHl06tW54oyYvDUS4vi003ReRy2TJLX0hE_5BB6lfbKiR8LIijHBKHHOBpBhyztrMXuElfFBRMt4pZw6JgYpmSVTjVvr_t1egek5nBvyyvFnn1o7IScvdmNrYGikdPealyA')",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(f\\\\\"{i+1}. {t['name']} — {', '.join\\(a['name'] for a in t['artists']\\)}\\\\\"\\) for i,t in enumerate\\(d.get\\('items',[]\\)\\)]\")",
+      "Bash(curl -s -X POST https://accounts.spotify.com/api/token -H 'Authorization: Basic __CMDSUB_OUTPUT__')",
+      "Bash(curl -s -w '\\\\nHTTP %{http_code}' 'https://api.spotify.com/v1/search?q=kun+faya+kun&type=track&limit=3' -H 'Authorization: Bearer BQCmxQU0WnuQz2qwuJxdvgHHIb0cdLlyt1HJGXKqsnekb5qkL2MrTllNgY6PjWaJe2m9TZqB7w4MhQpJ5nS4dU5-JMeKrhO8IIawn8snh6KgFb0Q5kZhIP5hiU2GmqTBqz5yRf19lelBl5plq-d0YUJbjc_CtoUotKq5yrH6O_yTDeiF0fU14IDEWCyelyCiKwNbHl06tW54oyYvDUS4vi003ReRy2TJLX0hE_5BB6lfbKiR8LIijHBKHHOBpBhyztrMXuElfFBRMt4pZw6JgYpmSVTjVvr_t1egek5nBvyyvFnn1o7IScvdmNrYGikdPealyA')",
+      "Bash(python3 -c ' *)",
+      "Bash(node -e ' *)",
+      "Bash(xargs cat)"
+    ],
+    "additionalDirectories": [
+      "/Users/akki/Documents/music-web/app/api/artist",
+      "/Users/akki/.claude/projects/-Users-akki-Documents-music-web/memory"
     ]
   }
 }

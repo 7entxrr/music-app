@@ -36,6 +36,12 @@ yarn-error.log*
 # vercel
 .vercel
 
+# Spotify refresh token (generated at runtime, never commit)
+.spotify-tokens.json
+
+# Audio cache (generated at runtime, never commit)
+.audio-cache.json
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
