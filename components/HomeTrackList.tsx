@@ -75,7 +75,7 @@ export default function HomeTrackList({ tracks }: Props) {
             {/* Artwork */}
             <div className="relative w-9 h-9 flex-shrink-0 rounded-lg overflow-hidden">
               {track.artworkUrl ? (
-                <Image src={track.artworkUrl} alt={track.name} fill className="object-cover" sizes="36px" />
+                <Image src={track.artworkUrl} alt={track.name} fill className="object-cover" sizes="36px" loading={i === 0 ? "eager" : "lazy"} priority={i === 0} />
               ) : (
                 <div className="w-full h-full bg-[var(--surface-3)]" />
               )}

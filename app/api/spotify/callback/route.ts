@@ -22,23 +22,36 @@ export async function GET(request: NextRequest) {
     }
 
     console.log('Getting access token with code...');
-    const tokens = await getAccessToken(code);
-    console.log('Access token received, getting user info...');
-    const user = await getCurrentUser(tokens.accessToken);
-    console.log('User info received:', user.display_name);
+    let tokens;
+    try {
+      tokens = await getAccessToken(code);
+      console.log('Access token received');
+    } catch (tokenError: any) {
+      console.error('Token exchange failed:', tokenError?.message || tokenError);
+      const redirectUrl = new URL('/', request.nextUrl.origin);
+      redirectUrl.searchParams.set('spotify_error', 'token_exchange_failed');
+      redirectUrl.searchParams.set('error_details', tokenError?.message?.slice(0, 100) || 'unknown');
+      return NextResponse.redirect(redirectUrl);
+    }
 
-    // Redirect to home page with tokens as query params (in production, use cookies or session)
     const redirectUrl = new URL('/', request.nextUrl.origin);
     redirectUrl.searchParams.set('spotify_access_token', tokens.accessToken);
     redirectUrl.searchParams.set('spotify_refresh_token', tokens.refreshToken);
-    redirectUrl.searchParams.set('spotify_user_id', user.id);
+
+    try {
+      const user = await getCurrentUser(tokens.accessToken);
+      redirectUrl.searchParams.set('spotify_user_id', user.id);
+    } catch {
+      console.warn('Could not fetch user info (quota mode?) — continuing without it');
+    }
 
     console.log('Redirecting to home page...');
     return NextResponse.redirect(redirectUrl);
   } catch (error) {
-    console.error('Error handling Spotify callback:', error);
+    console.error('Error handling Spotify callback:', error instanceof Error ? error.message : error);
     const redirectUrl = new URL('/', request.nextUrl.origin);
     redirectUrl.searchParams.set('spotify_error', 'auth_failed');
+    redirectUrl.searchParams.set('error_details', error instanceof Error ? error.message.slice(0, 100) : 'unknown');
     return NextResponse.redirect(redirectUrl);
   }
 }

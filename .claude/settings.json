@@ -14,7 +14,10 @@
       "Bash(curl -s -w '\\\\nHTTP %{http_code}' 'https://api.spotify.com/v1/search?q=kun+faya+kun&type=track&limit=3' -H 'Authorization: Bearer BQCmxQU0WnuQz2qwuJxdvgHHIb0cdLlyt1HJGXKqsnekb5qkL2MrTllNgY6PjWaJe2m9TZqB7w4MhQpJ5nS4dU5-JMeKrhO8IIawn8snh6KgFb0Q5kZhIP5hiU2GmqTBqz5yRf19lelBl5plq-d0YUJbjc_CtoUotKq5yrH6O_yTDeiF0fU14IDEWCyelyCiKwNbHl06tW54oyYvDUS4vi003ReRy2TJLX0hE_5BB6lfbKiR8LIijHBKHHOBpBhyztrMXuElfFBRMt4pZw6JgYpmSVTjVvr_t1egek5nBvyyvFnn1o7IScvdmNrYGikdPealyA')",
       "Bash(python3 -c ' *)",
       "Bash(node -e ' *)",
-      "Bash(xargs cat)"
+      "Bash(xargs cat)",
+      "WebFetch(domain:music-app-phi-steel.vercel.app)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://accounts.spotify.com/authorize?client_id=ecfaffef858b47af958c70e4e04c7044&response_type=code&redirect_uri=https://music-app-phi-steel.vercel.app/api/spotify/callback&scope=user-read-private&state=state\")",
+      "Bash(curl -s -I \"https://accounts.spotify.com/authorize?client_id=ecfaffef858b47af958c70e4e04c7044&response_type=code&redirect_uri=https://music-app-phi-steel.vercel.app/api/spotify/callback&scope=user-read-private&state=state\")"
     ],
     "additionalDirectories": [
       "/Users/akki/Documents/music-web/app/api/artist",

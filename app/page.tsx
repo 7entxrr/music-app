@@ -5,6 +5,8 @@ import { itunesSearch } from "@/lib/itunes";
 import type { ItunesTrack } from "@/lib/types";
 import HomeTrackList from "@/components/HomeTrackList";
 import SpotifyButton from "@/components/SpotifyButton";
+import SpotifyTokenCapture from "@/components/SpotifyTokenCapture";
+import SpotifyErrorDisplay from "@/components/SpotifyErrorDisplay";
 
 async function getHomeData() {
   try {
@@ -27,6 +29,8 @@ export default async function HomePage() {
 
   return (
     <div className="space-y-8">
+      <SpotifyTokenCapture />
+      <SpotifyErrorDisplay />
       {/* Spotify Login Section */}
       <section className="flex justify-center py-4">
         <SpotifyButton />

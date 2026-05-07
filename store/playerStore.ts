@@ -10,7 +10,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   currentTime: 0,
   duration: 0,
   volume: 0.8,
+  spotifyToken: typeof window !== 'undefined' ? localStorage.getItem('spotify_token') : null,
 
+  setSpotifyToken: (token) => {
+    if (typeof window !== 'undefined') {
+      if (token) localStorage.setItem('spotify_token', token);
+      else localStorage.removeItem('spotify_token');
+    }
+    set({ spotifyToken: token });
+  },
   setTrack: (track) => set({ track, isPlaying: true, currentTime: 0 }),
   setQueue: (queue) => set({ queue }),
   play: () => set({ isPlaying: true }),
