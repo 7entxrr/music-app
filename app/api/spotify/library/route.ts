@@ -13,12 +13,18 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    console.log('Fetching library with token length:', accessToken.length);
+
     // Fetch user's saved tracks (liked songs)
+    console.log('Fetching saved tracks...');
     const savedTracks = await getAllUserSavedTracks(accessToken);
+    console.log('Fetched saved tracks:', savedTracks.length);
 
     // Fetch user's playlists
+    console.log('Fetching playlists...');
     const playlistsData = await getUserPlaylists(accessToken);
     const playlists = playlistsData.items;
+    console.log('Fetched playlists:', playlists.length);
 
     // Fetch all tracks from all playlists
     const playlistTracks: any[] = [];
@@ -26,6 +32,7 @@ export async function GET(request: NextRequest) {
       try {
         const tracks = await getAllPlaylistTracks(accessToken, playlist.id);
         playlistTracks.push(...tracks);
+        console.log(`Fetched tracks from ${playlist.name}:`, tracks.length);
       } catch (error) {
         console.error(`Error fetching tracks from playlist ${playlist.name}:`, error);
       }
@@ -37,6 +44,8 @@ export async function GET(request: NextRequest) {
       new Map(allTracks.map(track => [track.id, track])).values()
     );
 
+    console.log('Total unique tracks:', uniqueTracks.length);
+
     return NextResponse.json({
       savedTracks,
       playlists,
@@ -45,9 +54,17 @@ export async function GET(request: NextRequest) {
       total: uniqueTracks.length,
     });
   } catch (error) {
-    console.error('Error fetching Spotify library:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('Error fetching Spotify library:', errorMessage);
+    console.error('Full error:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch library' },
+      { 
+        error: 'Failed to fetch library',
+        details: errorMessage 
+      },
+      { status: 500 }
+    );
+  }
       { status: 500 }
     );
   }

@@ -43,7 +43,10 @@ export default function LikedPage() {
     fetch(`/api/spotify/library?access_token=${spotifyToken}`)
       .then((r) => r.json())
       .then((data) => {
-        if (data.error) throw new Error(data.error);
+        if (data.error) {
+          const errorMsg = data.details ? `${data.error}: ${data.details}` : data.error;
+          throw new Error(errorMsg);
+        }
         setTracks(data.savedTracks ?? []);
       })
       .catch((e) => setError(e.message))
@@ -82,9 +85,14 @@ export default function LikedPage() {
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 gap-3 text-center">
-        <p className="text-red-400 font-medium">Failed to load: {error}</p>
-        <Link href="/" className="text-[var(--accent)] text-sm underline">Reconnect Spotify</Link>
+      <div className="flex flex-col items-center justify-center h-64 gap-3 text-center px-4">
+        <p className="text-red-400 font-medium text-base">Failed to load: {error}</p>
+        <p className="text-red-300 text-xs max-w-md break-words">
+          {error.includes('token') && 'Token may have expired. Try reconnecting.'}
+          {error.includes('401') && 'Unauthorized access. Your Spotify session expired.'}
+          {error.includes('403') && 'Forbidden. Check your Spotify app permissions.'}
+        </p>
+        <Link href="/" className="text-[var(--accent)] text-sm underline hover:opacity-80">Reconnect Spotify</Link>
       </div>
     );
   }
