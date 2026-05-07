@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { Suspense } from "react";
 import { Play } from "lucide-react";
 import { itunesSearch } from "@/lib/itunes";
 import type { ItunesTrack } from "@/lib/types";
@@ -30,7 +31,9 @@ export default async function HomePage() {
   return (
     <div className="space-y-8">
       <SpotifyTokenCapture />
-      <SpotifyErrorDisplay />
+      <Suspense fallback={null}>
+        <SpotifyErrorDisplay />
+      </Suspense>
       {/* Spotify Login Section */}
       <section className="flex justify-center py-4">
         <SpotifyButton />
