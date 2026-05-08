@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { Heart, Play, Pause, Music2 } from 'lucide-react';
 import { usePlayerStore } from '@/store/playerStore';
+import { useRouter } from 'next/navigation';
 import type { SpotifyTrack } from '@/lib/types';
 import type { EnrichedTrack } from '@/lib/types';
 import Link from 'next/link';
@@ -32,6 +33,7 @@ function spotifyToEnriched(t: SpotifyTrack): EnrichedTrack {
 }
 
 export default function LikedPage() {
+  const router = useRouter();
   const { spotifyToken, track: currentTrack, isPlaying, setTrack, setQueue, toggle, setSpotifyToken, setSpotifyRefreshToken } = usePlayerStore();
   const [tracks, setTracks] = useState<SpotifyTrack[]>([]);
   const [loading, setLoading] = useState(false);
@@ -104,17 +106,28 @@ export default function LikedPage() {
   }
 
   if (error) {
+    const handleClearTokens = () => {
+      setSpotifyToken(null);
+      setSpotifyRefreshToken(null);
+      router.push('/');
+    };
+
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-3 text-center px-4">
         <p className="text-red-400 font-medium text-base">Failed to load: {error}</p>
         <p className="text-red-300 text-xs max-w-md break-words">
+          {error.includes('403') && 'Spotify permission denied. Please re-authorize with correct permissions.'}
           {error.includes('token') && 'Token may have expired. Try reconnecting.'}
           {error.includes('401') && 'Unauthorized access. Your Spotify session expired.'}
-          {error.includes('403') && 'Forbidden. Check your Spotify app permissions.'}
           {error.includes('Access token is required') && 'No access token found. Please authenticate again.'}
           {!error.includes('token') && !error.includes('401') && !error.includes('403') && !error.includes('Access token') && 'An unexpected error occurred. Check browser console for details.'}
         </p>
-        <Link href="/" className="text-[var(--accent)] text-sm underline hover:opacity-80">Reconnect Spotify</Link>
+        <button
+          onClick={handleClearTokens}
+          className="text-[var(--accent)] text-sm underline hover:opacity-80"
+        >
+          Clear tokens and Reconnect Spotify
+        </button>
       </div>
     );
   }

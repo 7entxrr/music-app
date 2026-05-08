@@ -25,7 +25,9 @@ export function getSpotifyAuthUrl() {
     'playlist-read-collaborative',
   ];
 
-  return spotifyApi.createAuthorizeURL(scopes, 'state');
+  // Add a timestamp to force re-authorization
+  const state = Date.now().toString();
+  return spotifyApi.createAuthorizeURL(scopes, state);
 }
 
 export async function getAccessToken(code: string) {
