@@ -54,6 +54,12 @@ export async function GET(request: NextRequest) {
         }
       }
     } catch (error: any) {
+      console.error('Error in main fetch block:', error);
+      console.error('Error type:', typeof error);
+      console.error('Error constructor:', error?.constructor?.name);
+      console.error('Error keys:', error ? Object.keys(error) : 'no error object');
+      console.error('Error message:', error?.message);
+      console.error('Error body:', error?.body);
       // If token is expired (401), try to refresh
       if (error?.statusCode === 401 && refreshToken) {
         console.log('Access token expired, attempting refresh...');

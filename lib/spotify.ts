@@ -78,28 +78,37 @@ export async function getCurrentUser(accessToken: string): Promise<SpotifyUser> 
 }
 
 export async function getUserSavedTracks(accessToken: string, limit = 50, offset = 0): Promise<SpotifyTrack[]> {
-  spotifyApi.setAccessToken(accessToken);
-  const data = await spotifyApi.getMySavedTracks({ limit, offset });
-  
-  return data.body.items.map((item: any) => ({
-    id: item.track.id,
-    name: item.track.name,
-    artists: item.track.artists.map((artist: any) => ({
-      id: artist.id,
-      name: artist.name,
-    })),
-    album: {
-      id: item.track.album.id,
-      name: item.track.album.name,
-      images: item.track.album.images,
-      release_date: item.track.album.release_date,
-      total_tracks: item.track.album.total_tracks,
-    },
-    duration_ms: item.track.duration_ms,
-    preview_url: item.track.preview_url,
-    external_urls: item.track.external_urls,
-    uri: item.track.uri,
-  }));
+  try {
+    spotifyApi.setAccessToken(accessToken);
+    const data = await spotifyApi.getMySavedTracks({ limit, offset });
+    
+    return data.body.items.map((item: any) => ({
+      id: item.track.id,
+      name: item.track.name,
+      artists: item.track.artists.map((artist: any) => ({
+        id: artist.id,
+        name: artist.name,
+      })),
+      album: {
+        id: item.track.album.id,
+        name: item.track.album.name,
+        images: item.track.album.images,
+        release_date: item.track.album.release_date,
+        total_tracks: item.track.album.total_tracks,
+      },
+      duration_ms: item.track.duration_ms,
+      preview_url: item.track.preview_url,
+      external_urls: item.track.external_urls,
+      uri: item.track.uri,
+    }));
+  } catch (error) {
+    console.error('Error in getUserSavedTracks:', error);
+    console.error('Error type:', typeof error);
+    console.error('Error message:', (error as any)?.message);
+    console.error('Error body:', (error as any)?.body);
+    console.error('Error statusCode:', (error as any)?.statusCode);
+    throw error;
+  }
 }
 
 export async function getAllUserSavedTracks(accessToken: string): Promise<SpotifyTrack[]> {
@@ -123,9 +132,18 @@ export async function getAllUserSavedTracks(accessToken: string): Promise<Spotif
 }
 
 export async function getUserPlaylists(accessToken: string, limit = 50, offset = 0) {
-  spotifyApi.setAccessToken(accessToken);
-  const data = await spotifyApi.getUserPlaylists({ limit, offset });
-  return data.body;
+  try {
+    spotifyApi.setAccessToken(accessToken);
+    const data = await spotifyApi.getUserPlaylists({ limit, offset });
+    return data.body;
+  } catch (error) {
+    console.error('Error in getUserPlaylists:', error);
+    console.error('Error type:', typeof error);
+    console.error('Error message:', (error as any)?.message);
+    console.error('Error body:', (error as any)?.body);
+    console.error('Error statusCode:', (error as any)?.statusCode);
+    throw error;
+  }
 }
 
 export async function getPlaylistTracks(accessToken: string, playlistId: string, limit = 50, offset = 0) {
