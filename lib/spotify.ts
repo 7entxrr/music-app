@@ -152,25 +152,27 @@ export async function getPlaylistTracks(accessToken: string, playlistId: string,
   spotifyApi.setAccessToken(accessToken);
   const data = await spotifyApi.getPlaylistTracks(playlistId, { limit, offset });
   
-  return data.body.items.map((item: any) => ({
-    id: item.track.id,
-    name: item.track.name,
-    artists: item.track.artists.map((artist: any) => ({
-      id: artist.id,
-      name: artist.name,
-    })),
-    album: {
-      id: item.track.album.id,
-      name: item.track.album.name,
-      images: item.track.album.images,
-      release_date: item.track.album.release_date,
-      total_tracks: item.track.album.total_tracks,
-    },
-    duration_ms: item.track.duration_ms,
-    preview_url: item.track.preview_url,
-    external_urls: item.track.external_urls,
-    uri: item.track.uri,
-  }));
+  return data.body.items
+    .filter((item: any) => item.track != null)
+    .map((item: any) => ({
+      id: item.track.id,
+      name: item.track.name,
+      artists: item.track.artists.map((artist: any) => ({
+        id: artist.id,
+        name: artist.name,
+      })),
+      album: {
+        id: item.track.album.id,
+        name: item.track.album.name,
+        images: item.track.album.images,
+        release_date: item.track.album.release_date,
+        total_tracks: item.track.album.total_tracks,
+      },
+      duration_ms: item.track.duration_ms,
+      preview_url: item.track.preview_url,
+      external_urls: item.track.external_urls,
+      uri: item.track.uri,
+    }));
 }
 
 export async function getAllPlaylistTracks(accessToken: string, playlistId: string): Promise<SpotifyTrack[]> {
