@@ -55,6 +55,7 @@ export interface PlayerState {
   duration: number;
   volume: number;
   spotifyToken: string | null;
+  spotifyRefreshToken: string | null;
   setTrack: (track: EnrichedTrack) => void;
   setQueue: (queue: EnrichedTrack[]) => void;
   play: () => void;
@@ -64,6 +65,7 @@ export interface PlayerState {
   setDuration: (d: number) => void;
   setVolume: (v: number) => void;
   setSpotifyToken: (token: string | null) => void;
+  setSpotifyRefreshToken: (token: string | null) => void;
   next: () => void;
   prev: () => void;
 }

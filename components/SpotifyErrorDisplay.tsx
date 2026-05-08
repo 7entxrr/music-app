@@ -2,12 +2,19 @@
 
 import { useSearchParams } from 'next/navigation';
 import { AlertCircle, X } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export default function SpotifyErrorDisplay() {
   const searchParams = useSearchParams();
   const [isVisible, setIsVisible] = useState(true);
+  const [isMounted, setIsMounted] = useState(false);
   
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  if (!isMounted) return null;
+
   const error = searchParams.get('spotify_error');
   const errorDetails = searchParams.get('error_details');
 

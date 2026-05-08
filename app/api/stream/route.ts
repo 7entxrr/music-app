@@ -19,6 +19,15 @@ export async function GET(req: NextRequest) {
       }
     );
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    let errorMessage = 'Unknown error';
+    if (err instanceof Error) {
+      errorMessage = err.message;
+    } else if (typeof err === 'object' && err !== null) {
+      errorMessage = JSON.stringify(err);
+    } else {
+      errorMessage = String(err);
+    }
+    console.error('YouTube API error for', artist, track, ':', errorMessage);
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

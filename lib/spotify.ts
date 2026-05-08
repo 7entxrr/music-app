@@ -45,6 +45,23 @@ export async function getAccessToken(code: string) {
   }
 }
 
+export async function refreshAccessToken(refreshToken: string) {
+  try {
+    spotifyApi.setRefreshToken(refreshToken);
+    const data = await spotifyApi.refreshAccessToken();
+    spotifyApi.setAccessToken(data.body['access_token']);
+    
+    return {
+      accessToken: data.body['access_token'],
+      refreshToken: data.body['refresh_token'] || refreshToken,
+      expiresIn: data.body['expires_in'],
+    };
+  } catch (error) {
+    console.error('Error refreshing access token:', error);
+    throw error;
+  }
+}
+
 export function setAccessToken(token: string) {
   spotifyApi.setAccessToken(token);
 }

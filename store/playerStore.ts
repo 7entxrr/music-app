@@ -11,6 +11,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   duration: 0,
   volume: 0.8,
   spotifyToken: typeof window !== 'undefined' ? localStorage.getItem('spotify_token') : null,
+  spotifyRefreshToken: typeof window !== 'undefined' ? localStorage.getItem('spotify_refresh_token') : null,
 
   setSpotifyToken: (token) => {
     if (typeof window !== 'undefined') {
@@ -18,6 +19,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       else localStorage.removeItem('spotify_token');
     }
     set({ spotifyToken: token });
+  },
+  setSpotifyRefreshToken: (token) => {
+    if (typeof window !== 'undefined') {
+      if (token) localStorage.setItem('spotify_refresh_token', token);
+      else localStorage.removeItem('spotify_refresh_token');
+    }
+    set({ spotifyRefreshToken: token });
   },
   setTrack: (track) => set({ track, isPlaying: true, currentTime: 0 }),
   setQueue: (queue) => set({ queue }),

@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
 
     const redirectUrl = new URL('/', request.nextUrl.origin);
     redirectUrl.searchParams.set('spotify_access_token', tokens.accessToken);
-    redirectUrl.searchParams.set('spotify_refresh_token', tokens.refreshToken);
+    redirectUrl.searchParams.set('spotify_refresh_token', tokens.refreshToken || '');
 
     try {
       const user = await getCurrentUser(tokens.accessToken);
@@ -48,10 +48,26 @@ export async function GET(request: NextRequest) {
     console.log('Redirecting to home page...');
     return NextResponse.redirect(redirectUrl);
   } catch (error) {
-    console.error('Error handling Spotify callback:', error instanceof Error ? error.message : error);
+    let errorMessage = 'Unknown error';
+    let errorDetails = 'unknown';
+    
+    if (error instanceof Error) {
+      errorMessage = error.message;
+      errorDetails = error.message.slice(0, 200);
+    } else if (typeof error === 'object' && error !== null) {
+      errorMessage = JSON.stringify(error);
+      errorDetails = errorMessage.slice(0, 200);
+    } else {
+      errorMessage = String(error);
+      errorDetails = errorMessage.slice(0, 200);
+    }
+    
+    console.error('Error handling Spotify callback:', errorMessage);
+    console.error('Full error:', error);
+    
     const redirectUrl = new URL('/', request.nextUrl.origin);
     redirectUrl.searchParams.set('spotify_error', 'auth_failed');
-    redirectUrl.searchParams.set('error_details', error instanceof Error ? error.message.slice(0, 100) : 'unknown');
+    redirectUrl.searchParams.set('error_details', errorDetails);
     return NextResponse.redirect(redirectUrl);
   }
 }

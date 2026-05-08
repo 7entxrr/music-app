@@ -32,7 +32,7 @@ function spotifyToEnriched(t: SpotifyTrack): EnrichedTrack {
 }
 
 export default function LikedPage() {
-  const { spotifyToken, track: currentTrack, isPlaying, setTrack, setQueue, toggle } = usePlayerStore();
+  const { spotifyToken, track: currentTrack, isPlaying, setTrack, setQueue, toggle, setSpotifyToken, setSpotifyRefreshToken } = usePlayerStore();
   const [tracks, setTracks] = useState<SpotifyTrack[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,16 +40,36 @@ export default function LikedPage() {
   useEffect(() => {
     if (!spotifyToken) return;
     setLoading(true);
-    fetch(`/api/spotify/library?access_token=${spotifyToken}`)
-      .then((r) => r.json())
-      .then((data) => {
+    setError(null);
+    const refreshToken = usePlayerStore.getState().spotifyRefreshToken;
+    console.log('Fetching library with tokens:', {
+      hasAccessToken: !!spotifyToken,
+      accessTokenLength: spotifyToken?.length,
+      hasRefreshToken: !!refreshToken,
+      refreshTokenLength: refreshToken?.length,
+    });
+    fetch(`/api/spotify/library?access_token=${spotifyToken}&refresh_token=${refreshToken || ''}`)
+      .then(async (r) => {
+        const data = await r.json();
+        console.log('Spotify library response:', data);
         if (data.error) {
           const errorMsg = data.details ? `${data.error}: ${data.details}` : data.error;
           throw new Error(errorMsg);
         }
         setTracks(data.savedTracks ?? []);
+        // Update tokens if they were refreshed
+        if (data.newAccessToken) {
+          setSpotifyToken(data.newAccessToken);
+        }
+        if (data.newRefreshToken) {
+          setSpotifyRefreshToken(data.newRefreshToken);
+        }
       })
-      .catch((e) => setError(e.message))
+      .catch((e) => {
+        console.error('Error fetching Spotify library:', e);
+        const errorMessage = e?.message || (typeof e === 'string' ? e : JSON.stringify(e));
+        setError(errorMessage || 'Failed to fetch library');
+      })
       .finally(() => setLoading(false));
   }, [spotifyToken]);
 
@@ -91,6 +111,8 @@ export default function LikedPage() {
           {error.includes('token') && 'Token may have expired. Try reconnecting.'}
           {error.includes('401') && 'Unauthorized access. Your Spotify session expired.'}
           {error.includes('403') && 'Forbidden. Check your Spotify app permissions.'}
+          {error.includes('Access token is required') && 'No access token found. Please authenticate again.'}
+          {!error.includes('token') && !error.includes('401') && !error.includes('403') && !error.includes('Access token') && 'An unexpected error occurred. Check browser console for details.'}
         </p>
         <Link href="/" className="text-[var(--accent)] text-sm underline hover:opacity-80">Reconnect Spotify</Link>
       </div>
