@@ -1,5 +1,5 @@
-// YouTube search: uses official Data API v3 if YOUTUBE_API_KEY is set,
-// otherwise falls back to HTML scraping (works on Edge runtime, blocked on Lambda).
+// YouTube search: routes through YOUTUBE_PROXY_URL (Cloudflare Worker) if set,
+// otherwise falls back to HTML scraping (blocked on Lambda + Vercel Edge).
 
 const youtubeCache = new Map<string, { videoIds: string[]; fetchedAt: number }>();
 const YOUTUBE_CACHE_TTL = 24 * 60 * 60 * 1000;
@@ -37,16 +37,16 @@ function clean(s: string): string {
     .trim();
 }
 
-// Official YouTube Data API v3 — works from any IP, requires YOUTUBE_API_KEY env var.
-async function searchWithApiKey(query: string, apiKey: string): Promise<string[]> {
-  const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=5&key=${apiKey}`;
+// Cloudflare Worker proxy — works from any IP, set YOUTUBE_PROXY_URL env var.
+async function searchViaProxy(query: string, proxyUrl: string): Promise<string[]> {
+  const url = `${proxyUrl}/search?q=${encodeURIComponent(query)}`;
   const res = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(6000) });
-  if (!res.ok) throw new Error(`YouTube Data API error: ${res.status}`);
+  if (!res.ok) throw new Error(`Proxy search failed: ${res.status}`);
   const data = await res.json();
-  return (data.items ?? []).map((item: { id: { videoId: string } }) => item.id.videoId).filter(Boolean);
+  return (data.videoIds ?? []) as string[];
 }
 
-// HTML scraping fallback — works on Edge runtime (Vercel edge IPs not blocked by YouTube).
+// HTML scraping fallback — blocked on Vercel Lambda and Edge, kept as last resort.
 async function searchYouTubeHTML(query: string): Promise<string[]> {
   const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&sp=EgIQAQ%3D%3D`;
   const res = await fetch(url, {
@@ -70,12 +70,12 @@ async function searchYouTubeHTML(query: string): Promise<string[]> {
 }
 
 async function searchYouTube(query: string): Promise<string[]> {
-  const apiKey = process.env.YOUTUBE_API_KEY;
-  if (apiKey) {
+  const proxyUrl = process.env.YOUTUBE_PROXY_URL;
+  if (proxyUrl) {
     try {
-      return await searchWithApiKey(query, apiKey);
+      return await searchViaProxy(query, proxyUrl);
     } catch {
-      // Key expired/quota hit — fall through to HTML scraping
+      // Proxy failed — fall through to HTML scraping
     }
   }
   return searchYouTubeHTML(query);

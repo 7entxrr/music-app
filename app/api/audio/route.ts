@@ -1,38 +1,27 @@
-import { Innertube, ClientType } from 'youtubei.js';
+export const runtime = 'edge';
+
 import { NextRequest, NextResponse } from 'next/server';
 
 const urlCache = new Map<string, { url: string; mime: string; clen: number; t: number }>();
 const CACHE_TTL = 4 * 60 * 60 * 1000;
 
-let yt: Awaited<ReturnType<typeof Innertube.create>> | null = null;
-
-async function getInnertube() {
-  if (!yt) {
-    yt = await Innertube.create({ generate_session_locally: false, client_type: ClientType.ANDROID_VR });
-  }
-  return yt;
-}
-
 async function resolveAudio(videoId: string) {
   const hit = urlCache.get(videoId);
   if (hit && Date.now() - hit.t < CACHE_TTL) return hit;
 
-  const innertube = await getInnertube();
-  const info = await innertube.getBasicInfo(videoId);
+  const proxyUrl = process.env.YOUTUBE_PROXY_URL;
+  if (!proxyUrl) return null;
 
-  const format =
-    info.chooseFormat({ type: 'audio', quality: 'best', format: 'mp4' }) ??
-    info.chooseFormat({ type: 'audio', quality: 'best' });
+  const res = await fetch(`${proxyUrl}/streams/${videoId}`, {
+    cache: 'no-store',
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) return null;
 
-  const url = format?.url;
-  if (!url) return null;
+  const data = await res.json() as { url: string; mime: string; clen: number };
+  if (!data.url) return null;
 
-  const entry = {
-    url,
-    mime: (format.mime_type ?? 'audio/mp4').split(';')[0],
-    clen: Number(format.content_length ?? 0),
-    t: Date.now(),
-  };
+  const entry = { url: data.url, mime: data.mime ?? 'audio/mp4', clen: data.clen ?? 0, t: Date.now() };
   urlCache.set(videoId, entry);
   return entry;
 }
@@ -60,7 +49,6 @@ export async function GET(req: NextRequest) {
 
     if (upstream.status === 403 || upstream.status === 410) {
       urlCache.delete(videoId);
-      yt = null;
       return NextResponse.json({ error: 'URL expired, retry' }, { status: 502 });
     }
 
@@ -76,7 +64,6 @@ export async function GET(req: NextRequest) {
     return new NextResponse(upstream.body, { status: upstream.status, headers });
   } catch (err) {
     console.error('[/api/audio] Failed for', videoId, ':', err);
-    yt = null;
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }
