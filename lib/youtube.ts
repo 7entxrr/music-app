@@ -1,7 +1,4 @@
-// Uses Piped API (open-source YouTube proxy) for search — works from any IP including Vercel's.
-
-const PIPED_API = 'https://pipedapi.kavin.rocks';
-const PIPED_FALLBACK = 'https://api.piped.projectsegfau.lt';
+// Scrapes YouTube search HTML — no API key, works from any IP including Vercel's.
 
 const youtubeCache = new Map<string, { videoIds: string[]; fetchedAt: number }>();
 const YOUTUBE_CACHE_TTL = 24 * 60 * 60 * 1000;
@@ -39,37 +36,34 @@ function clean(s: string): string {
     .trim();
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function extractIdsFromPipedItems(items: any[], max = 5): string[] {
+async function searchYouTubeHTML(query: string): Promise<string[]> {
+  // sp=EgIQAQ== filters for videos only
+  const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&sp=EgIQAQ%3D%3D`;
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    },
+    cache: 'no-store',
+    signal: AbortSignal.timeout(8000),
+  });
+
+  if (!res.ok) throw new Error(`YouTube search HTML failed: ${res.status}`);
+
+  const html = await res.text();
+  const seen = new Set<string>();
   const ids: string[] = [];
-  for (const item of items) {
-    if (item?.type !== 'stream') continue;
-    const m = (item.url ?? '').match(/[?&]v=([a-zA-Z0-9_-]{11})/);
-    if (m?.[1]) {
-      ids.push(m[1]);
-      if (ids.length >= max) break;
+
+  for (const m of html.matchAll(/"videoId":"([a-zA-Z0-9_-]{11})"/g)) {
+    const id = m[1];
+    if (!seen.has(id)) {
+      seen.add(id);
+      ids.push(id);
+      if (ids.length >= 5) break;
     }
   }
   return ids;
-}
-
-async function searchPiped(query: string, baseUrl = PIPED_API): Promise<string[]> {
-  const res = await fetch(
-    `${baseUrl}/search?q=${encodeURIComponent(query)}&filter=videos`,
-    { cache: 'no-store', signal: AbortSignal.timeout(6000) }
-  );
-  if (!res.ok) throw new Error(`Piped search failed: ${res.status}`);
-  const data = await res.json();
-  return extractIdsFromPipedItems(data?.items ?? []);
-}
-
-async function searchWithFallback(query: string): Promise<string[]> {
-  try {
-    return await searchPiped(query, PIPED_API);
-  } catch (err) {
-    console.warn(`[YouTube] Primary Piped failed, trying fallback:`, err instanceof Error ? err.message : err);
-    return await searchPiped(query, PIPED_FALLBACK);
-  }
 }
 
 async function fetchAllCandidates(artist: string, track: string): Promise<string[]> {
@@ -89,7 +83,7 @@ async function fetchAllCandidates(artist: string, track: string): Promise<string
 
   for (const q of queries) {
     try {
-      const ids = await searchWithFallback(q);
+      const ids = await searchYouTubeHTML(q);
       if (ids.length > 0) {
         console.log(`[YouTube] Found "${ct}" via: "${q}" → ${ids[0]}`);
         for (const id of ids) {
