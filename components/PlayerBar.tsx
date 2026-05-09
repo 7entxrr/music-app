@@ -34,6 +34,7 @@ export default function PlayerBar() {
   const retryCountRef = useRef(0);
   const bannedIdsRef = useRef<string[]>([]);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const silentAudioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     if (window.YT?.Player) { setApiReady(true); return; }
@@ -82,7 +83,7 @@ export default function PlayerBar() {
     }
     playerRef.current = new window.YT.Player(containerRef.current, {
       videoId,
-      playerVars: { autoplay: 1, controls: 0, modestbranding: 1, rel: 0 },
+      playerVars: { autoplay: 1, controls: 0, modestbranding: 1, rel: 0, origin: window.location.origin },
       events: {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         onReady: (e: any) => {
@@ -183,10 +184,35 @@ export default function PlayerBar() {
       gain.connect(ctx.destination);
       osc.start();
       audioCtxRef.current = ctx;
+
+      // Auto-resume the moment Chrome suspends the context (fires before timers are throttled)
+      ctx.onstatechange = () => {
+        if (ctx.state === 'suspended') ctx.resume();
+      };
+
+      // Silent <audio> loop — Chrome exempts tabs with a playing HTMLMediaElement from
+      // background throttling. This is more reliable than the Web Audio trick alone.
+      if (!silentAudioRef.current) {
+        const wav = new Uint8Array([
+          0x52,0x49,0x46,0x46, 0x25,0x00,0x00,0x00, // RIFF, size=37
+          0x57,0x41,0x56,0x45, 0x66,0x6D,0x74,0x20, // WAVE, fmt
+          0x10,0x00,0x00,0x00, 0x01,0x00, 0x01,0x00, // chunk=16, PCM, mono
+          0x40,0x1F,0x00,0x00, 0x40,0x1F,0x00,0x00, // 8000 Hz, 8000 B/s
+          0x01,0x00, 0x08,0x00,                      // blockAlign=1, 8-bit
+          0x64,0x61,0x74,0x61, 0x01,0x00,0x00,0x00, // data, 1 byte
+          0x80,                                      // silence (unsigned 8-bit midpoint)
+        ]);
+        const url = URL.createObjectURL(new Blob([wav], { type: 'audio/wav' }));
+        const audio = new Audio(url);
+        audio.loop = true;
+        audio.volume = 0.001;
+        audio.play().catch(() => {});
+        silentAudioRef.current = audio;
+      }
     };
 
     const handleVisibility = () => {
-      if (document.visibilityState === 'visible' && audioCtxRef.current?.state === 'suspended') {
+      if (audioCtxRef.current?.state === 'suspended') {
         audioCtxRef.current.resume();
       }
     };
