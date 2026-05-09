@@ -97,15 +97,22 @@ export default function PlayerBar() {
         },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         onError: (e: any) => {
-          const errors: Record<number, string> = { 2: 'invalid video ID', 5: 'HTML5 player error', 100: 'video removed/private', 101: 'embedding not allowed', 150: 'embedding not allowed' };
-          console.error(`❌ [Player] ${videoId}: ${errors[e.data] ?? `code ${e.data}`}`);
-          if ((e.data === 101 || e.data === 150) && videoId) {
+          if (e.data === 101 || e.data === 150) {
+            // Server pre-filters via oEmbed, but handle the rare slip-through silently
             const currentTrack = usePlayerStore.getState().track;
-            if (currentTrack && !currentTrack.youtubeId) {
+            if (currentTrack && !currentTrack.youtubeId && videoId) {
               bannedIdsRef.current = [...bannedIdsRef.current, videoId];
-              console.log(`🔄 Trying next embeddable video, banned: [${bannedIdsRef.current.join(', ')}]`);
-              fetchVideoId(currentTrack.id, currentTrack.artists[0]?.name ?? '', currentTrack.name, bannedIdsRef.current);
+              if (bannedIdsRef.current.length >= 3) {
+                console.log(`⏭️ [Player] "${currentTrack.name}" all candidates blocked, skipping`);
+                next();
+              } else {
+                console.log(`❌ [Player] ${videoId} blocked, fetching next candidate...`);
+                fetchVideoId(currentTrack.id, currentTrack.artists[0]?.name ?? '', currentTrack.name, bannedIdsRef.current);
+              }
             }
+          } else {
+            const errors: Record<number, string> = { 2: 'invalid video ID', 5: 'HTML5 player error', 100: 'video removed/private' };
+            console.log(`❌ [Player] ${videoId}: ${errors[e.data] ?? `code ${e.data}`}`);
           }
         },
       },
@@ -169,19 +176,71 @@ export default function PlayerBar() {
     navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
   }, [isPlaying]);
 
-  // Resume playback if Chrome throttled the tab while hidden
+  // Silent Web Audio node — registers this tab as having active audio output.
+  // Without this, Chrome suspends the YouTube iframe when the tab goes to background.
   useEffect(() => {
+    let ctx: AudioContext | null = null;
+
+    const setup = () => {
+      if (ctx) return;
+      ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      gain.gain.value = 0; // completely silent
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+    };
+
+    // AudioContext requires a prior user gesture on Chrome
+    document.addEventListener('click', setup, { once: true });
+
     const handleVisibility = () => {
-      if (document.visibilityState === 'visible' && playerRef.current) {
+      // Resume AudioContext if Chrome suspended it while hidden
+      if (document.visibilityState === 'visible' && ctx?.state === 'suspended') {
+        ctx.resume();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      document.removeEventListener('click', setup);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      ctx?.close();
+    };
+  }, []);
+
+  // Polling keepalive while tab is hidden.
+  // Chrome throttles timers in background tabs, but the poll still fires ~once/min
+  // as a safety net to restart the player if it was paused.
+  useEffect(() => {
+    let hiddenInterval: ReturnType<typeof setInterval> | null = null;
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenInterval = setInterval(() => {
+          const { isPlaying } = getStoreState();
+          const p = playerRef.current;
+          if (p && isPlaying && p.getPlayerState?.() !== window.YT?.PlayerState?.PLAYING) {
+            p.playVideo?.();
+          }
+        }, 1000);
+      } else {
+        if (hiddenInterval) { clearInterval(hiddenInterval); hiddenInterval = null; }
+        // Immediate check on tab focus
         const { isPlaying } = getStoreState();
-        const state = playerRef.current.getPlayerState?.();
-        if (isPlaying && state !== window.YT?.PlayerState?.PLAYING) {
-          playerRef.current.playVideo?.();
+        const p = playerRef.current;
+        if (p && isPlaying && p.getPlayerState?.() !== window.YT?.PlayerState?.PLAYING) {
+          p.playVideo?.();
         }
       }
     };
+
     document.addEventListener('visibilitychange', handleVisibility);
-    return () => document.removeEventListener('visibilitychange', handleVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      if (hiddenInterval) clearInterval(hiddenInterval);
+    };
   }, []);
 
   if (!track) return null;

@@ -138,27 +138,21 @@ async function fetchAllCandidates(artist: string, track: string): Promise<string
   return results;
 }
 
-// Returns the first non-excluded video ID (or null). Caches all candidates.
-export async function getYouTubeVideoId(
+// Returns all non-excluded candidate video IDs, fetching/caching as needed.
+export async function getYouTubeCandidates(
   artist: string,
   track: string,
   excludeIds: string[] = []
-): Promise<string | null> {
+): Promise<string[]> {
   const key = getCacheKey(artist, track);
   const cached = youtubeCache.get(key);
 
-  const candidates: string[] = (() => {
-    if (cached && Date.now() - cached.fetchedAt < YOUTUBE_CACHE_TTL) return cached.videoIds;
-    return [];
-  })();
-
-  // If we have cached candidates, try to return one that isn't excluded
-  if (candidates.length > 0) {
-    const pick = candidates.find((id) => !excludeIds.includes(id));
-    if (pick) return pick;
+  if (cached && Date.now() - cached.fetchedAt < YOUTUBE_CACHE_TTL) {
+    const filtered = cached.videoIds.filter((id) => !excludeIds.includes(id));
+    if (filtered.length > 0) return filtered;
+    // All cached IDs excluded — fall through to fresh fetch
   }
 
-  // Need to fetch (or refetch to find more candidates)
   let promise = inflightYouTube.get(key);
   if (!promise) {
     promise = fetchAllCandidates(artist, track).then((ids) => {
@@ -171,5 +165,15 @@ export async function getYouTubeVideoId(
   }
 
   const ids = await promise;
-  return ids.find((id) => !excludeIds.includes(id)) ?? null;
+  return ids.filter((id) => !excludeIds.includes(id));
+}
+
+// Convenience wrapper — returns the first non-excluded candidate.
+export async function getYouTubeVideoId(
+  artist: string,
+  track: string,
+  excludeIds: string[] = []
+): Promise<string | null> {
+  const candidates = await getYouTubeCandidates(artist, track, excludeIds);
+  return candidates[0] ?? null;
 }
