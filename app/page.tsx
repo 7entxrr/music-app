@@ -45,10 +45,10 @@ export default async function HomePage() {
       <section>
         <h2 className="text-xl font-bold text-[var(--foreground)] mb-4">Releases for You</h2>
 
-        <div className="flex gap-6 bg-[var(--surface)] rounded-2xl p-4 shadow-sm">
+        <div className="flex flex-col sm:flex-row gap-4 md:gap-6 bg-[var(--surface)] rounded-2xl p-4 shadow-sm">
           {/* Hero Album Art */}
           {hero && (
-            <div className="flex-shrink-0 relative w-48 h-48 rounded-xl overflow-hidden shadow-md">
+            <div className="flex-shrink-0 relative w-full sm:w-48 h-40 sm:h-48 rounded-xl overflow-hidden shadow-md">
               {hero.artworkUrl ? (
                 <Image
                   src={hero.artworkUrl}

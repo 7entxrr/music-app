@@ -17,7 +17,12 @@
       "Bash(xargs cat)",
       "WebFetch(domain:music-app-phi-steel.vercel.app)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://accounts.spotify.com/authorize?client_id=ecfaffef858b47af958c70e4e04c7044&response_type=code&redirect_uri=https://music-app-phi-steel.vercel.app/api/spotify/callback&scope=user-read-private&state=state\")",
-      "Bash(curl -s -I \"https://accounts.spotify.com/authorize?client_id=ecfaffef858b47af958c70e4e04c7044&response_type=code&redirect_uri=https://music-app-phi-steel.vercel.app/api/spotify/callback&scope=user-read-private&state=state\")"
+      "Bash(curl -s -I \"https://accounts.spotify.com/authorize?client_id=ecfaffef858b47af958c70e4e04c7044&response_type=code&redirect_uri=https://music-app-phi-steel.vercel.app/api/spotify/callback&scope=user-read-private&state=state\")",
+      "WebSearch",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(vercel --prod)"
     ],
     "additionalDirectories": [
       "/Users/akki/Documents/music-web/app/api/artist",

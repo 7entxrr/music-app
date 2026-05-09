@@ -7,6 +7,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   track: null,
   queue: [],
   isPlaying: false,
+  shuffle: false,
   currentTime: 0,
   duration: 0,
   volume: 0.8,
@@ -36,12 +37,21 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setDuration: (duration) => set({ duration }),
   setVolume: (volume) => set({ volume }),
 
+  toggleShuffle: () => set((s) => ({ shuffle: !s.shuffle })),
+
   next: () => {
-    const { track, queue } = get();
+    const { track, queue, shuffle } = get();
     if (!track || queue.length === 0) return;
-    const idx = queue.findIndex((t) => t.id === track.id);
-    const next = queue[idx + 1];
-    if (next) set({ track: next, isPlaying: true, currentTime: 0 });
+    if (shuffle) {
+      const others = queue.filter((t) => t.id !== track.id);
+      if (others.length === 0) return;
+      const random = others[Math.floor(Math.random() * others.length)];
+      set({ track: random, isPlaying: true, currentTime: 0 });
+    } else {
+      const idx = queue.findIndex((t) => t.id === track.id);
+      const next = queue[idx + 1];
+      if (next) set({ track: next, isPlaying: true, currentTime: 0 });
+    }
   },
 
   prev: () => {

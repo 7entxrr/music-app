@@ -3,6 +3,7 @@ import { Poppins } from "next/font/google";
 import "./globals.css";
 import PlayerBar from "@/components/PlayerBar";
 import Sidebar from "@/components/Sidebar";
+import BottomNav from "@/components/BottomNav";
 
 const poppins = Poppins({
   variable: "--font-poppins",
@@ -25,10 +26,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           className="flex flex-col min-h-screen"
           style={{ marginLeft: "var(--sidebar-w)" }}
         >
-          <main className="flex-1 px-6 pb-32">{children}</main>
+          <main className="flex-1 px-4 md:px-6 pb-44 md:pb-32">{children}</main>
         </div>
 
         <PlayerBar />
+        <BottomNav />
       </body>
     </html>
   );

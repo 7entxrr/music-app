@@ -13,6 +13,15 @@
   --accent-hover: #6a4db0;
   --sidebar-w: 220px;
   --rightpanel-w: 260px;
+  --bottomnav-h: 0px;
+}
+
+@media (max-width: 767px) {
+  :root {
+    --sidebar-w: 0px;
+    --rightpanel-w: 0px;
+    --bottomnav-h: 64px;
+  }
 }
 
 @theme inline {

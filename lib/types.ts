@@ -66,8 +66,10 @@ export interface PlayerState {
   setVolume: (v: number) => void;
   setSpotifyToken: (token: string | null) => void;
   setSpotifyRefreshToken: (token: string | null) => void;
+  shuffle: boolean;
   next: () => void;
   prev: () => void;
+  toggleShuffle: () => void;
 }
 
 export interface SpotifyArtist {

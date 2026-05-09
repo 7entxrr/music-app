@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import ArtistHero from "@/components/ArtistHero";
+import ArtistControls from "@/components/ArtistControls";
 import TrackCard from "@/components/TrackCard";
 import Link from "next/link";
 import Image from "next/image";
@@ -24,6 +25,7 @@ async function ArtistContent({ id }: { id: string }) {
   return (
     <div className="space-y-10">
       <ArtistHero artist={artist} />
+      <ArtistControls tracks={enrichedTracks} />
 
       {enrichedTracks.length > 0 && (
         <section>
