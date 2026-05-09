@@ -1,3 +1,5 @@
+export const runtime = 'edge';
+
 import { NextResponse } from "next/server";
 import { itunesLookupTrack } from "@/lib/itunes";
 import { getYouTubeVideoId } from "@/lib/youtube";
