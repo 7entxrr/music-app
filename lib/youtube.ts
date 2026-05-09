@@ -1,5 +1,4 @@
-// YouTube search: routes through YOUTUBE_PROXY_URL (Cloudflare Worker) if set,
-// otherwise falls back to HTML scraping (blocked on Lambda + Vercel Edge).
+// YouTube search: uses youtubei.js library for reliable searching
 
 const youtubeCache = new Map<string, { videoIds: string[]; fetchedAt: number }>();
 const YOUTUBE_CACHE_TTL = 24 * 60 * 60 * 1000;
@@ -37,48 +36,28 @@ function clean(s: string): string {
     .trim();
 }
 
-// Cloudflare Worker proxy — works from any IP, set YOUTUBE_PROXY_URL env var.
-async function searchViaProxy(query: string, proxyUrl: string): Promise<string[]> {
-  const url = `${proxyUrl}/search?q=${encodeURIComponent(query)}`;
-  const res = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(6000) });
-  if (!res.ok) throw new Error(`Proxy search failed: ${res.status}`);
-  const data = await res.json();
-  return (data.videoIds ?? []) as string[];
-}
-
-// HTML scraping fallback — blocked on Vercel Lambda and Edge, kept as last resort.
-async function searchYouTubeHTML(query: string): Promise<string[]> {
-  const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&sp=EgIQAQ%3D%3D`;
-  const res = await fetch(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36',
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-    },
-    cache: 'no-store',
-    signal: AbortSignal.timeout(8000),
-  });
-  if (!res.ok) throw new Error(`YouTube HTML search failed: ${res.status}`);
-  const html = await res.text();
-  const seen = new Set<string>();
-  const ids: string[] = [];
-  for (const m of html.matchAll(/"videoId":"([a-zA-Z0-9_-]{11})"/g)) {
-    if (!seen.has(m[1])) { seen.add(m[1]); ids.push(m[1]); }
-    if (ids.length >= 5) break;
-  }
-  return ids;
-}
-
-async function searchYouTube(query: string): Promise<string[]> {
-  const proxyUrl = process.env.YOUTUBE_PROXY_URL;
-  if (proxyUrl) {
-    try {
-      return await searchViaProxy(query, proxyUrl);
-    } catch {
-      // Proxy failed — fall through to HTML scraping
+// Use youtubei.js for reliable YouTube search
+async function searchYouTubeWithLibrary(query: string): Promise<string[]> {
+  try {
+    const { Innertube } = await import('youtubei.js');
+    const yt = await Innertube.create();
+    const search = await yt.search(query);
+    const ids: string[] = [];
+    
+    if (search.videos) {
+      for (const video of search.videos) {
+        if (video.type === 'Video' && video.id) {
+          ids.push(video.id);
+          if (ids.length >= 5) break;
+        }
+      }
     }
+    
+    return ids;
+  } catch (err) {
+    console.error('[YouTube] Library search failed:', err instanceof Error ? err.message : err);
+    throw err;
   }
-  return searchYouTubeHTML(query);
 }
 
 async function fetchAllCandidates(artist: string, track: string): Promise<string[]> {

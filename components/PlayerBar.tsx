@@ -89,6 +89,7 @@ export default function PlayerBar() {
     const audio = audioRef.current;
     if (!audio) return;
     if (!videoId) { audio.pause(); audio.src = ''; return; }
+    console.log(`[Player] Loading audio for videoId: ${videoId}`);
     audio.src = `/api/audio?videoId=${videoId}`;
     audio.load();
     const { isPlaying } = getStoreState();
