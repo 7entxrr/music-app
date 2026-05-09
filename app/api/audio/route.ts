@@ -1,36 +1,88 @@
-import { Innertube, ClientType } from 'youtubei.js';
 import { NextRequest, NextResponse } from 'next/server';
 
 const urlCache = new Map<string, { url: string; mime: string; clen: number; t: number }>();
 const CACHE_TTL = 4 * 60 * 60 * 1000;
 
-let yt: Awaited<ReturnType<typeof Innertube.create>> | null = null;
-
-async function getInnertube() {
-  if (!yt) {
-    yt = await Innertube.create({ generate_session_locally: false, client_type: ClientType.ANDROID_VR });
-  }
-  return yt;
-}
-
 async function resolveAudio(videoId: string) {
   const hit = urlCache.get(videoId);
   if (hit && Date.now() - hit.t < CACHE_TTL) return hit;
 
-  const innertube = await getInnertube();
-  const info = await innertube.getBasicInfo(videoId);
+  // Step 1: get a visitor token so YouTube doesn't flag us as a bot
+  let visitorData = '';
+  try {
+    const pageRes = await fetch(`https://www.youtube.com/watch?v=${videoId}&hl=en`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+    });
+    const html = await pageRes.text();
+    const m = html.match(/"visitorData":"([^"]+)"/);
+    if (m) visitorData = m[1];
+  } catch {
+    // proceed without visitor data
+  }
 
-  const format =
-    info.chooseFormat({ type: 'audio', quality: 'best', format: 'mp4' }) ??
-    info.chooseFormat({ type: 'audio', quality: 'best' });
+  // Step 2: call Innertube player API with ANDROID_VR client (returns direct URLs)
+  const body: Record<string, unknown> = {
+    videoId,
+    context: {
+      client: {
+        clientName: 'ANDROID_VR',
+        clientVersion: '1.56.21',
+        deviceMake: 'Oculus',
+        deviceModel: 'Quest 2',
+        androidSdkVersion: 32,
+        osName: 'Android',
+        osVersion: '12L',
+        platform: 'MOBILE',
+      },
+    },
+  };
+  if (visitorData) (body.context as Record<string, unknown>).client = {
+    ...(body.context as Record<string, unknown>).client as object,
+    visitorData,
+  };
 
-  const url = format?.url;
-  if (!url) return null;
+  const res = await fetch('https://www.youtube.com/youtubei/v1/player', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'User-Agent': 'com.google.android.apps.youtube.vr.oculus/1.56.21 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip',
+      'X-YouTube-Client-Name': '28',
+      'X-YouTube-Client-Version': '1.56.21',
+      ...(visitorData ? { 'X-Goog-Visitor-Id': visitorData } : {}),
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(8000),
+  });
+
+  if (!res.ok) {
+    console.error(`[/api/audio] Innertube ${res.status} for ${videoId}`);
+    return null;
+  }
+
+  const data = await res.json() as {
+    playabilityStatus?: { status: string };
+    streamingData?: { adaptiveFormats?: Array<{ mimeType?: string; bitrate?: number; contentLength?: string; url?: string }> };
+  };
+
+  const status = data.playabilityStatus?.status;
+  if (status && status !== 'OK') {
+    console.error(`[/api/audio] playabilityStatus=${status} for ${videoId}`);
+    return null;
+  }
+
+  const formats = (data.streamingData?.adaptiveFormats ?? []).filter(f => f.mimeType?.startsWith('audio/') && f.url);
+  if (formats.length === 0) return null;
+
+  formats.sort((a, b) => (b.bitrate ?? 0) - (a.bitrate ?? 0));
+  const best = formats[0];
 
   const entry = {
-    url,
-    mime: (format.mime_type ?? 'audio/mp4').split(';')[0],
-    clen: Number(format.content_length ?? 0),
+    url: best.url!,
+    mime: best.mimeType?.split(';')[0] ?? 'audio/mp4',
+    clen: Number(best.contentLength ?? 0),
     t: Date.now(),
   };
   urlCache.set(videoId, entry);
@@ -60,7 +112,6 @@ export async function GET(req: NextRequest) {
 
     if (upstream.status === 403 || upstream.status === 410) {
       urlCache.delete(videoId);
-      yt = null;
       return NextResponse.json({ error: 'URL expired, retry' }, { status: 502 });
     }
 
@@ -76,7 +127,6 @@ export async function GET(req: NextRequest) {
     return new NextResponse(upstream.body, { status: upstream.status, headers });
   } catch (err) {
     console.error('[/api/audio] Failed for', videoId, ':', err);
-    yt = null;
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }
