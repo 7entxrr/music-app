@@ -81,7 +81,7 @@ export default function PlayerBar() {
     }
     playerRef.current = new window.YT.Player(containerRef.current, {
       videoId,
-      playerVars: { autoplay: 1, controls: 0, modestbranding: 1, rel: 0 },
+      playerVars: { autoplay: 1, controls: 0, modestbranding: 1, rel: 0, origin: window.location.origin },
       events: {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         onReady: (e: any) => {
@@ -176,37 +176,35 @@ export default function PlayerBar() {
     navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
   }, [isPlaying]);
 
+  const audioCtxRef = useRef<AudioContext | null>(null);
+
   // Silent Web Audio node — registers this tab as having active audio output.
   // Without this, Chrome suspends the YouTube iframe when the tab goes to background.
   useEffect(() => {
-    let ctx: AudioContext | null = null;
-
     const setup = () => {
-      if (ctx) return;
-      ctx = new AudioContext();
+      if (audioCtxRef.current) return;
+      const ctx = new AudioContext();
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       gain.gain.value = 0; // completely silent
       osc.connect(gain);
       gain.connect(ctx.destination);
       osc.start();
+      audioCtxRef.current = ctx;
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && audioCtxRef.current?.state === 'suspended') {
+        audioCtxRef.current.resume();
+      }
     };
 
     // AudioContext requires a prior user gesture on Chrome
     document.addEventListener('click', setup, { once: true });
-
-    const handleVisibility = () => {
-      // Resume AudioContext if Chrome suspended it while hidden
-      if (document.visibilityState === 'visible' && ctx?.state === 'suspended') {
-        ctx.resume();
-      }
-    };
-
     document.addEventListener('visibilitychange', handleVisibility);
     return () => {
       document.removeEventListener('click', setup);
       document.removeEventListener('visibilitychange', handleVisibility);
-      ctx?.close();
     };
   }, []);
 
