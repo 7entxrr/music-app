@@ -33,6 +33,7 @@ export default function PlayerBar() {
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryCountRef = useRef(0);
   const bannedIdsRef = useRef<string[]>([]);
+  const audioCtxRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
     if (window.YT?.Player) { setApiReady(true); return; }
@@ -169,6 +170,36 @@ export default function PlayerBar() {
     navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
   }, [isPlaying]);
 
+  // Silent Web Audio node — registers this tab as having active audio output.
+  // Without this, Chrome suspends the YouTube iframe when the tab goes to background.
+  useEffect(() => {
+    const setup = () => {
+      if (audioCtxRef.current) return;
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      gain.gain.value = 0; // completely silent
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      audioCtxRef.current = ctx;
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && audioCtxRef.current?.state === 'suspended') {
+        audioCtxRef.current.resume();
+      }
+    };
+
+    // AudioContext requires a prior user gesture on Chrome
+    document.addEventListener('click', setup, { once: true });
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      document.removeEventListener('click', setup);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, []);
+
   // Resume playback if Chrome throttled the tab while hidden
   useEffect(() => {
     const handleVisibility = () => {
@@ -182,6 +213,54 @@ export default function PlayerBar() {
     };
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, []);
+
+  // Polling keepalive while tab is hidden.
+  // Chrome throttles timers in background tabs, but the poll still fires ~once/min
+  // as a safety net to restart the player if it was paused.
+  useEffect(() => {
+    let hiddenInterval: ReturnType<typeof setInterval> | null = null;
+    let swChannel: MessageChannel | null = null;
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        // Use service worker to keep the app alive
+        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+          swChannel = new MessageChannel();
+          navigator.serviceWorker.controller.postMessage(
+            { type: 'KEEP_ALIVE' },
+            [swChannel.port2]
+          );
+          swChannel.port1.onmessage = () => {
+            // Service worker is alive, keep polling
+          };
+        }
+
+        hiddenInterval = setInterval(() => {
+          const { isPlaying } = getStoreState();
+          const p = playerRef.current;
+          if (p && isPlaying && p.getPlayerState?.() !== window.YT?.PlayerState?.PLAYING) {
+            p.playVideo?.();
+          }
+        }, 1000);
+      } else {
+        if (hiddenInterval) { clearInterval(hiddenInterval); hiddenInterval = null; }
+        if (swChannel) { swChannel.port1.close(); swChannel = null; }
+        // Immediate check on tab focus
+        const { isPlaying } = getStoreState();
+        const p = playerRef.current;
+        if (p && isPlaying && p.getPlayerState?.() !== window.YT?.PlayerState?.PLAYING) {
+          p.playVideo?.();
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      if (hiddenInterval) clearInterval(hiddenInterval);
+      if (swChannel) { swChannel.port1.close(); }
+    };
   }, []);
 
   if (!track) return null;

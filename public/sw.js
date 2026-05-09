@@ -20,3 +20,19 @@ self.addEventListener('message', (event) => {
     event.ports[0].postMessage({ status: 'alive' });
   }
 });
+
+// Prevent service worker from being terminated when audio is playing
+let keepAliveInterval;
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim());
+
+  // Keep service worker alive to support background audio
+  keepAliveInterval = setInterval(() => {
+    self.clients.matchAll().then(clients => {
+      if (clients.length === 0) {
+        // No clients, we can stop the keep-alive
+        clearInterval(keepAliveInterval);
+      }
+    });
+  }, 30000); // Ping every 30 seconds
+});
