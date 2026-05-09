@@ -1,82 +1,38 @@
-export const runtime = 'edge';
-
+import { Innertube, ClientType } from 'youtubei.js';
 import { NextRequest, NextResponse } from 'next/server';
 
 const urlCache = new Map<string, { url: string; mime: string; clen: number; t: number }>();
 const CACHE_TTL = 4 * 60 * 60 * 1000;
 
-// Direct Innertube player API — works locally and on Cloudflare (IPs not blocked).
-// Blocked on Vercel Lambda/Edge — use YOUTUBE_PROXY_URL there instead.
-async function resolveViaInnertube(videoId: string) {
-  const res = await fetch('https://www.youtube.com/youtubei/v1/player', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'User-Agent': 'com.google.android.apps.youtube.vr.oculus/1.56.21 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip',
-      'X-YouTube-Client-Name': '28',
-      'X-YouTube-Client-Version': '1.56.21',
-    },
-    body: JSON.stringify({
-      videoId,
-      context: {
-        client: {
-          clientName: 'ANDROID_VR',
-          clientVersion: '1.56.21',
-          deviceMake: 'Oculus',
-          deviceModel: 'Quest 2',
-          androidSdkVersion: 32,
-          osName: 'Android',
-          osVersion: '12L',
-          platform: 'MOBILE',
-        },
-      },
-    }),
-    signal: AbortSignal.timeout(8000),
-  });
-  if (!res.ok) throw new Error(`Innertube player failed: ${res.status}`);
-  const data = await res.json() as { streamingData?: { adaptiveFormats?: Array<{ mimeType?: string; bitrate?: number; contentLength?: string; url?: string }> } };
+let yt: Awaited<ReturnType<typeof Innertube.create>> | null = null;
 
-  const formats = (data.streamingData?.adaptiveFormats ?? []).filter(f => f.mimeType?.startsWith('audio/'));
-  if (formats.length === 0) return null;
-
-  formats.sort((a, b) => (b.bitrate ?? 0) - (a.bitrate ?? 0));
-  const best = formats[0];
-  if (!best.url) return null;
-
-  return {
-    url: best.url,
-    mime: best.mimeType?.split(';')[0] ?? 'audio/mp4',
-    clen: Number(best.contentLength ?? 0),
-  };
+async function getInnertube() {
+  if (!yt) {
+    yt = await Innertube.create({ generate_session_locally: false, client_type: ClientType.ANDROID_VR });
+  }
+  return yt;
 }
 
 async function resolveAudio(videoId: string) {
   const hit = urlCache.get(videoId);
   if (hit && Date.now() - hit.t < CACHE_TTL) return hit;
 
-  const proxyUrl = process.env.YOUTUBE_PROXY_URL;
+  const innertube = await getInnertube();
+  const info = await innertube.getBasicInfo(videoId);
 
-  let result: { url: string; mime: string; clen: number } | null = null;
+  const format =
+    info.chooseFormat({ type: 'audio', quality: 'best', format: 'mp4' }) ??
+    info.chooseFormat({ type: 'audio', quality: 'best' });
 
-  if (proxyUrl) {
-    try {
-      const res = await fetch(`${proxyUrl}/streams/${videoId}`, {
-        cache: 'no-store',
-        signal: AbortSignal.timeout(8000),
-      });
-      if (res.ok) result = await res.json() as { url: string; mime: string; clen: number };
-    } catch {
-      // fall through to direct Innertube
-    }
-  }
+  const url = format?.url;
+  if (!url) return null;
 
-  if (!result) {
-    result = await resolveViaInnertube(videoId);
-  }
-
-  if (!result?.url) return null;
-
-  const entry = { ...result, t: Date.now() };
+  const entry = {
+    url,
+    mime: (format.mime_type ?? 'audio/mp4').split(';')[0],
+    clen: Number(format.content_length ?? 0),
+    t: Date.now(),
+  };
   urlCache.set(videoId, entry);
   return entry;
 }
@@ -104,6 +60,7 @@ export async function GET(req: NextRequest) {
 
     if (upstream.status === 403 || upstream.status === 410) {
       urlCache.delete(videoId);
+      yt = null;
       return NextResponse.json({ error: 'URL expired, retry' }, { status: 502 });
     }
 
@@ -119,6 +76,7 @@ export async function GET(req: NextRequest) {
     return new NextResponse(upstream.body, { status: upstream.status, headers });
   } catch (err) {
     console.error('[/api/audio] Failed for', videoId, ':', err);
+    yt = null;
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }
