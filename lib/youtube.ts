@@ -71,7 +71,13 @@ async function searchYouTubeHTML(query: string): Promise<string[]> {
 
 async function searchYouTube(query: string): Promise<string[]> {
   const apiKey = process.env.YOUTUBE_API_KEY;
-  if (apiKey) return searchWithApiKey(query, apiKey);
+  if (apiKey) {
+    try {
+      return await searchWithApiKey(query, apiKey);
+    } catch {
+      // Key expired/quota hit — fall through to HTML scraping
+    }
+  }
   return searchYouTubeHTML(query);
 }
 
