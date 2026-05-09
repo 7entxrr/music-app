@@ -31,7 +31,8 @@
       "Bash(node -e \"const ytdl = require\\('@distube/ytdl-core'\\); console.log\\('ytdl ok, version:', require\\('@distube/ytdl-core/package.json'\\).version\\)\")",
       "Bash(node -e \"const { Innertube } = require\\('youtubei.js'\\); console.log\\('youtubei.js ok'\\)\")",
       "Bash(git fetch *)",
-      "Bash(yt-dlp --version)"
+      "Bash(yt-dlp --version)",
+      "Bash(git checkout *)"
     ],
     "additionalDirectories": [
       "/Users/akki/Documents/music-web/app/api/artist",
