@@ -4,6 +4,7 @@ import "./globals.css";
 import PlayerBar from "@/components/PlayerBar";
 import Sidebar from "@/components/Sidebar";
 import BottomNav from "@/components/BottomNav";
+import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 
 const poppins = Poppins({
   variable: "--font-poppins",
@@ -19,7 +20,14 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${poppins.variable} h-full`}>
+      <head>
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#000000" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+      </head>
       <body className="min-h-full bg-[var(--background)] text-[var(--foreground)]">
+        <ServiceWorkerRegistration />
         <Sidebar />
 
         <div

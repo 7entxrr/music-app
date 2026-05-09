@@ -8,238 +8,154 @@ import {
 } from "lucide-react";
 import { usePlayerStore } from "@/store/playerStore";
 
-declare global {
-  interface Window {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    YT: any;
-    onYouTubeIframeAPIReady: () => void;
-  }
-}
-
 export default function PlayerBar() {
   const {
     track, isPlaying, volume, currentTime, duration, shuffle,
     toggle, next, prev, toggleShuffle,
     setCurrentTime, setDuration, setVolume,
   } = usePlayerStore();
-  const getStoreState = usePlayerStore.getState;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const playerRef = useRef<any>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
   const [videoId, setVideoId] = useState<string | null>(null);
-  const [apiReady, setApiReady] = useState(false);
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const retryCountRef = useRef(0);
   const bannedIdsRef = useRef<string[]>([]);
 
-  useEffect(() => {
-    if (window.YT?.Player) { setApiReady(true); return; }
-    const tag = document.createElement("script");
-    tag.src = "https://www.youtube.com/iframe_api";
-    document.head.appendChild(tag);
-    window.onYouTubeIframeAPIReady = () => setApiReady(true);
-  }, []);
-
+  // ── Step 1: resolve video ID ──────────────────────────────────────────────
   const fetchVideoId = (trackId: string, artist: string, name: string, banned: string[] = []) => {
     const excludeParam = banned.length > 0 ? `&exclude=${banned.join(",")}` : "";
     fetch(`/api/stream?artist=${encodeURIComponent(artist)}&track=${encodeURIComponent(name)}${excludeParam}`)
       .then((r) => r.json())
       .then((d) => {
         if (d.videoId) {
-          console.log(`[Player] Video ID resolved for "${name}": ${d.videoId}`);
-          retryCountRef.current = 0;
           setVideoId(d.videoId);
         } else {
-          console.warn(`[Player] No embeddable video for "${name}", skipping to next song`);
+          console.log(`⏭️ [Player] No video found for "${name}", skipping`);
           next();
         }
       })
-      .catch((err) => console.error(`[Player] Fetch failed for "${name}":`, err));
+      .catch((err) => console.error(`[Player] Stream fetch failed for "${name}":`, err));
   };
 
   useEffect(() => {
     if (retryRef.current) clearTimeout(retryRef.current);
-    retryCountRef.current = 0;
     bannedIdsRef.current = [];
     if (!track) return;
-    if (track.youtubeId) {
-      setVideoId(track.youtubeId);
-    } else {
+    if (track.youtubeId) setVideoId(track.youtubeId);
+    else {
       setVideoId(null);
-      fetchVideoId(track.id, track.artists[0]?.name ?? '', track.name, []);
+      fetchVideoId(track.id, track.artists[0]?.name ?? "", track.name, []);
     }
     return () => { if (retryRef.current) clearTimeout(retryRef.current); };
   }, [track?.id, track?.youtubeId]);
 
+  // ── Step 2: load audio URL into <audio> ───────────────────────────────────
   useEffect(() => {
-    if (!apiReady || !videoId || !containerRef.current) return;
-    if (playerRef.current) {
-      playerRef.current.loadVideoById(videoId);
-      return;
-    }
-    playerRef.current = new window.YT.Player(containerRef.current, {
-      videoId,
-      playerVars: { autoplay: 1, controls: 0, modestbranding: 1, rel: 0, origin: window.location.origin },
-      events: {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        onReady: (e: any) => {
-          console.log(`[Player] YouTube player ready for video: ${videoId}`);
-          e.target.setVolume(volume * 100);
-          if (isPlaying) e.target.playVideo();
-        },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        onStateChange: (e: any) => {
-          const states: Record<number, string> = { [-1]: 'unstarted', 0: 'ended', 1: 'playing', 2: 'paused', 3: 'buffering', 5: 'cued' };
-          console.log(`[Player] State changed: ${states[e.data] ?? e.data}`);
-          if (e.data === window.YT.PlayerState.ENDED) next();
-        },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        onError: (e: any) => {
-          if (e.data === 101 || e.data === 150) {
-            // Server pre-filters via oEmbed, but handle the rare slip-through silently
-            const currentTrack = usePlayerStore.getState().track;
-            if (currentTrack && !currentTrack.youtubeId && videoId) {
-              bannedIdsRef.current = [...bannedIdsRef.current, videoId];
-              if (bannedIdsRef.current.length >= 3) {
-                console.log(`⏭️ [Player] "${currentTrack.name}" all candidates blocked, skipping`);
-                next();
-              } else {
-                console.log(`❌ [Player] ${videoId} blocked, fetching next candidate...`);
-                fetchVideoId(currentTrack.id, currentTrack.artists[0]?.name ?? '', currentTrack.name, bannedIdsRef.current);
-              }
-            }
-          } else {
-            const errors: Record<number, string> = { 2: 'invalid video ID', 5: 'HTML5 player error', 100: 'video removed/private' };
-            console.log(`❌ [Player] ${videoId}: ${errors[e.data] ?? `code ${e.data}`}`);
-          }
-        },
-      },
-    });
-  }, [apiReady, videoId]);
+    if (!videoId) return;
+    const audio = audioRef.current;
+    if (!audio) return;
 
+    fetch(`/api/audio?videoId=${encodeURIComponent(videoId)}`)
+      .then((r) => r.json())
+      .then((d) => {
+        const url = d.audioUrl ?? d.url;
+        if (!url) {
+          console.error(`[Player] No audio URL for ${videoId}`);
+          // treat same as embed error — try next candidate
+          const t = usePlayerStore.getState().track;
+          if (t && !t.youtubeId) {
+            bannedIdsRef.current = [...bannedIdsRef.current, videoId];
+            fetchVideoId(t.id, t.artists[0]?.name ?? "", t.name, bannedIdsRef.current);
+          }
+          return;
+        }
+        console.log(`✅ [Player] Loading audio for ${videoId}`);
+        audio.src = url;
+        audio.volume = usePlayerStore.getState().volume;
+        if (usePlayerStore.getState().isPlaying) audio.play().catch(() => {});
+      })
+      .catch((err) => console.error(`[Player] Audio fetch failed for ${videoId}:`, err));
+  }, [videoId]);
+
+  // ── Step 3: play / pause ──────────────────────────────────────────────────
   useEffect(() => {
-    const p = playerRef.current;
-    if (!p) return;
-    if (isPlaying) p.playVideo?.();
-    else p.pauseVideo?.();
+    const audio = audioRef.current;
+    if (!audio?.src) return;
+    if (isPlaying) audio.play().catch(() => {});
+    else audio.pause();
   }, [isPlaying]);
 
+  // ── Step 4: volume ────────────────────────────────────────────────────────
   useEffect(() => {
-    playerRef.current?.setVolume?.(volume * 100);
+    if (audioRef.current) audioRef.current.volume = volume;
   }, [volume]);
 
+  // ── Step 5: wire audio events ─────────────────────────────────────────────
   useEffect(() => {
-    if (!isPlaying) return;
-    const id = setInterval(() => {
-      const p = playerRef.current;
-      if (!p) return;
-      setCurrentTime(p.getCurrentTime?.() ?? 0);
-      setDuration(p.getDuration?.() ?? 0);
-    }, 500);
-    return () => clearInterval(id);
-  }, [isPlaying, setCurrentTime, setDuration]);
+    const audio = audioRef.current;
+    if (!audio) return;
 
-  // Media Session API — enables background playback + OS media controls
+    const onTimeUpdate = () => setCurrentTime(audio.currentTime);
+    const onDurationChange = () => setDuration(isFinite(audio.duration) ? audio.duration : 0);
+    const onEnded = () => next();
+    const onError = () => {
+      const t = usePlayerStore.getState().track;
+      console.error(`[Player] Audio error for video ${videoId}`);
+      if (videoId && t && !t.youtubeId) {
+        bannedIdsRef.current = [...bannedIdsRef.current, videoId];
+        if (bannedIdsRef.current.length >= 3) {
+          console.log(`⏭️ [Player] All candidates failed for "${t.name}", skipping`);
+          next();
+        } else {
+          fetchVideoId(t.id, t.artists[0]?.name ?? "", t.name, bannedIdsRef.current);
+        }
+      }
+    };
+
+    audio.addEventListener("timeupdate", onTimeUpdate);
+    audio.addEventListener("durationchange", onDurationChange);
+    audio.addEventListener("ended", onEnded);
+    audio.addEventListener("error", onError);
+    return () => {
+      audio.removeEventListener("timeupdate", onTimeUpdate);
+      audio.removeEventListener("durationchange", onDurationChange);
+      audio.removeEventListener("ended", onEnded);
+      audio.removeEventListener("error", onError);
+    };
+  }, [videoId]);
+
+  // ── Step 6: Media Session (lock screen / notification bar controls) ────────
   useEffect(() => {
-    if (!track || !('mediaSession' in navigator)) return;
+    if (!track || !("mediaSession" in navigator)) return;
     navigator.mediaSession.metadata = new MediaMetadata({
       title: track.name,
-      artist: track.artists?.map((a) => a.name).join(', '),
-      album: track.album?.name ?? '',
+      artist: track.artists?.map((a) => a.name).join(", "),
+      album: track.album?.name ?? "",
       artwork: track.artworkUrl
-        ? [{ src: track.artworkUrl, sizes: '600x600', type: 'image/jpeg' }]
+        ? [{ src: track.artworkUrl, sizes: "600x600", type: "image/jpeg" }]
         : undefined,
     });
-    navigator.mediaSession.setActionHandler('play', () => {
-      playerRef.current?.playVideo?.();
-      usePlayerStore.setState({ isPlaying: true });  // eslint-disable-line
+    navigator.mediaSession.setActionHandler("play", () => {
+      audioRef.current?.play();
+      usePlayerStore.setState({ isPlaying: true });
     });
-    navigator.mediaSession.setActionHandler('pause', () => {
-      playerRef.current?.pauseVideo?.();
-      usePlayerStore.setState({ isPlaying: false }); // eslint-disable-line
+    navigator.mediaSession.setActionHandler("pause", () => {
+      audioRef.current?.pause();
+      usePlayerStore.setState({ isPlaying: false });
     });
-    navigator.mediaSession.setActionHandler('nexttrack', () => next());
-    navigator.mediaSession.setActionHandler('previoustrack', () => prev());
-    navigator.mediaSession.setActionHandler('seekto', (d) => {
-      if (d.seekTime != null) {
-        playerRef.current?.seekTo?.(d.seekTime, true);
+    navigator.mediaSession.setActionHandler("nexttrack", () => next());
+    navigator.mediaSession.setActionHandler("previoustrack", () => prev());
+    navigator.mediaSession.setActionHandler("seekto", (d) => {
+      if (d.seekTime != null && audioRef.current) {
+        audioRef.current.currentTime = d.seekTime;
         setCurrentTime(d.seekTime);
       }
     });
   }, [track]);
 
-  // Keep OS media controls in sync with play state
   useEffect(() => {
-    if (!('mediaSession' in navigator)) return;
-    navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+    if (!("mediaSession" in navigator)) return;
+    navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
   }, [isPlaying]);
-
-  const audioCtxRef = useRef<AudioContext | null>(null);
-
-  // Silent Web Audio node — registers this tab as having active audio output.
-  // Without this, Chrome suspends the YouTube iframe when the tab goes to background.
-  useEffect(() => {
-    const setup = () => {
-      if (audioCtxRef.current) return;
-      const ctx = new AudioContext();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      gain.gain.value = 0; // completely silent
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      audioCtxRef.current = ctx;
-    };
-
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible' && audioCtxRef.current?.state === 'suspended') {
-        audioCtxRef.current.resume();
-      }
-    };
-
-    // AudioContext requires a prior user gesture on Chrome
-    document.addEventListener('click', setup, { once: true });
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => {
-      document.removeEventListener('click', setup);
-      document.removeEventListener('visibilitychange', handleVisibility);
-    };
-  }, []);
-
-  // Polling keepalive while tab is hidden.
-  // Chrome throttles timers in background tabs, but the poll still fires ~once/min
-  // as a safety net to restart the player if it was paused.
-  useEffect(() => {
-    let hiddenInterval: ReturnType<typeof setInterval> | null = null;
-
-    const handleVisibility = () => {
-      if (document.visibilityState === 'hidden') {
-        hiddenInterval = setInterval(() => {
-          const { isPlaying } = getStoreState();
-          const p = playerRef.current;
-          if (p && isPlaying && p.getPlayerState?.() !== window.YT?.PlayerState?.PLAYING) {
-            p.playVideo?.();
-          }
-        }, 1000);
-      } else {
-        if (hiddenInterval) { clearInterval(hiddenInterval); hiddenInterval = null; }
-        // Immediate check on tab focus
-        const { isPlaying } = getStoreState();
-        const p = playerRef.current;
-        if (p && isPlaying && p.getPlayerState?.() !== window.YT?.PlayerState?.PLAYING) {
-          p.playVideo?.();
-        }
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibility);
-      if (hiddenInterval) clearInterval(hiddenInterval);
-    };
-  }, []);
 
   if (!track) return null;
 
@@ -250,11 +166,8 @@ export default function PlayerBar() {
       className="fixed z-40 bg-[var(--surface)] border-t border-[var(--border)] shadow-lg"
       style={{ left: "var(--sidebar-w)", right: "var(--rightpanel-w)", bottom: "var(--bottomnav-h)" }}
     >
-      {/* Hidden YT player */}
-      <div
-        ref={containerRef}
-        style={{ position: "fixed", bottom: 0, left: "-9999px", width: 1, height: 1, pointerEvents: "none" }}
-      />
+      {/* Native audio — never throttled in background */}
+      <audio ref={audioRef} preload="auto" />
 
       {/* Main row: art + info | controls | volume */}
       <div className="flex items-center gap-2 md:gap-3 px-3 md:px-4 pt-2.5 pb-1">
@@ -268,7 +181,7 @@ export default function PlayerBar() {
           )}
         </div>
 
-        {/* Track info + add */}
+        {/* Track info */}
         <div className="flex items-center gap-1.5 min-w-0 flex-1 md:flex-none md:w-52">
           <div className="min-w-0 flex-1">
             <p className="text-xs md:text-sm font-semibold truncate text-[var(--foreground)]">{track.name}</p>
@@ -281,7 +194,7 @@ export default function PlayerBar() {
           </button>
         </div>
 
-        {/* Controls — always visible, responsive sizes */}
+        {/* Controls */}
         <div className="flex items-center gap-2 md:gap-4 flex-1 md:flex-none justify-center">
           <button
             onClick={toggleShuffle}
@@ -291,11 +204,7 @@ export default function PlayerBar() {
             <Shuffle className="w-3.5 h-3.5 md:w-4 md:h-4" />
           </button>
 
-          <button
-            onClick={prev}
-            className="text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
-            aria-label="Previous"
-          >
+          <button onClick={prev} className="text-[var(--muted)] hover:text-[var(--foreground)] transition-colors" aria-label="Previous">
             <SkipBack className="w-4 h-4 md:w-5 md:h-5" />
           </button>
 
@@ -309,11 +218,7 @@ export default function PlayerBar() {
               : <Play className="w-4 h-4 text-white ml-0.5" fill="white" />}
           </button>
 
-          <button
-            onClick={next}
-            className="text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
-            aria-label="Next"
-          >
+          <button onClick={next} className="text-[var(--muted)] hover:text-[var(--foreground)] transition-colors" aria-label="Next">
             <SkipForward className="w-4 h-4 md:w-5 md:h-5" />
           </button>
 
@@ -322,7 +227,7 @@ export default function PlayerBar() {
           </button>
         </div>
 
-        {/* Volume — large screens only */}
+        {/* Volume */}
         <div className="hidden lg:flex items-center gap-2 w-28 flex-shrink-0">
           <Volume2 className="w-4 h-4 text-[var(--muted)] flex-shrink-0" />
           <div className="flex-1 relative h-1 bg-[var(--border)] rounded-full">
@@ -339,7 +244,7 @@ export default function PlayerBar() {
         </div>
       </div>
 
-      {/* Progress bar — always visible */}
+      {/* Progress bar */}
       <div className="flex items-center gap-2 px-3 md:px-4 pb-2">
         <span className="text-[10px] text-[var(--muted)] tabular-nums w-7 text-right">{fmtTime(currentTime)}</span>
         <div className="flex-1 relative h-1 bg-[var(--border)] rounded-full">
@@ -352,7 +257,7 @@ export default function PlayerBar() {
             onChange={(e) => {
               const t = Number(e.target.value);
               setCurrentTime(t);
-              playerRef.current?.seekTo?.(t, true);
+              if (audioRef.current) audioRef.current.currentTime = t;
             }}
             className="absolute inset-0 w-full opacity-0 cursor-pointer h-full"
           />
