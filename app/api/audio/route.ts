@@ -1,29 +1,52 @@
-import { exec } from 'child_process';
-import { promisify } from 'util';
+import { Innertube, ClientType } from 'youtubei.js';
 import { NextRequest, NextResponse } from 'next/server';
 
-const execAsync = promisify(exec);
-
-// Cache resolved URLs for 4h (yt-dlp URLs expire ~6h)
-const cache = new Map<string, { url: string; t: number }>();
+// Cache resolved audio info for 4h (YouTube signed URLs expire ~6h)
+const urlCache = new Map<string, { url: string; mime: string; clen: number; t: number }>();
 const CACHE_TTL = 4 * 60 * 60 * 1000;
 
-async function resolveAudioUrl(videoId: string): Promise<string | null> {
-  const hit = cache.get(videoId);
-  if (hit && Date.now() - hit.t < CACHE_TTL) return hit.url;
+let yt: Awaited<ReturnType<typeof Innertube.create>> | null = null;
 
-  // -f 140 = AAC 128kbps (fastest to resolve, universally available)
-  // fallback chain if 140 is missing
-  const { stdout } = await execAsync(
-    `yt-dlp -f "140/bestaudio[ext=m4a]/bestaudio" --get-url "https://www.youtube.com/watch?v=${videoId}"`,
-    { timeout: 20000 }
-  );
+async function getInnertube() {
+  if (!yt) {
+    // ANDROID_VR returns direct unsigned URLs that accept full-range requests
+    yt = await Innertube.create({ generate_session_locally: false, client_type: ClientType.ANDROID_VR });
+  }
+  return yt;
+}
 
-  const url = stdout.trim().split('\n')[0];
+async function resolveAudio(videoId: string) {
+  const hit = urlCache.get(videoId);
+  if (hit && Date.now() - hit.t < CACHE_TTL) return hit;
+
+  const innertube = await getInnertube();
+  const info = await innertube.getBasicInfo(videoId);
+
+  const format =
+    info.chooseFormat({ type: 'audio', quality: 'best', format: 'mp4' }) ??
+    info.chooseFormat({ type: 'audio', quality: 'best' });
+
+  const url = format?.url;
   if (!url) return null;
 
-  cache.set(videoId, { url, t: Date.now() });
-  return url;
+  const entry = {
+    url,
+    mime: (format.mime_type ?? 'audio/mp4').split(';')[0],
+    clen: Number(format.content_length ?? 0),
+    t: Date.now(),
+  };
+  urlCache.set(videoId, entry);
+  return entry;
+}
+
+// Convert an open-ended Range header to a concrete one using known content length
+function resolveRange(clientRange: string | null, clen: number): string {
+  if (!clientRange) return `bytes=0-${clen - 1}`;
+  // If already has end byte, use as-is
+  if (!/bytes=\d+-$/.test(clientRange)) return clientRange;
+  // Open-ended: "bytes=N-" → fill in end
+  const start = clientRange.match(/bytes=(\d+)-/)?.[1] ?? '0';
+  return `bytes=${start}-${clen - 1}`;
 }
 
 export async function GET(req: NextRequest) {
@@ -31,26 +54,23 @@ export async function GET(req: NextRequest) {
   if (!videoId) return NextResponse.json({ error: 'Missing videoId' }, { status: 400 });
 
   try {
-    const audioUrl = await resolveAudioUrl(videoId);
-    if (!audioUrl) return NextResponse.json({ error: 'No audio URL found' }, { status: 404 });
+    const audio = await resolveAudio(videoId);
+    if (!audio) return NextResponse.json({ error: 'No audio stream found' }, { status: 404 });
 
-    const range = req.headers.get('range');
-    const upstream = await fetch(audioUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        ...(range ? { Range: range } : {}),
-      },
+    const range = resolveRange(req.headers.get('range'), audio.clen);
+    const upstream = await fetch(audio.url, {
+      headers: { Range: range },
       cache: 'no-store',
     });
 
-    // Cached URL expired — evict so next request re-resolves via yt-dlp
     if (upstream.status === 403 || upstream.status === 410) {
-      cache.delete(videoId);
+      urlCache.delete(videoId);
+      yt = null;
       return NextResponse.json({ error: 'URL expired, retry' }, { status: 502 });
     }
 
     const headers = new Headers();
-    headers.set('Content-Type', upstream.headers.get('Content-Type') ?? 'audio/mp4');
+    headers.set('Content-Type', audio.mime);
     headers.set('Accept-Ranges', 'bytes');
     headers.set('Cache-Control', 'no-cache');
     const cl = upstream.headers.get('Content-Length');
@@ -60,7 +80,8 @@ export async function GET(req: NextRequest) {
 
     return new NextResponse(upstream.body, { status: upstream.status, headers });
   } catch (err) {
-    console.error('[/api/audio] Failed for', videoId, err);
+    console.error('[/api/audio] Failed for', videoId, ':', err);
+    yt = null;
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }

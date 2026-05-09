@@ -33,7 +33,11 @@
       "Bash(git fetch *)",
       "Bash(yt-dlp --version)",
       "Bash(git checkout *)",
-      "Bash(yt-dlp -f \"140/bestaudio[ext=m4a]/bestaudio\" --get-url \"https://www.youtube.com/watch?v=fHI8X4OXluQ\")"
+      "Bash(yt-dlp -f \"140/bestaudio[ext=m4a]/bestaudio\" --get-url \"https://www.youtube.com/watch?v=fHI8X4OXluQ\")",
+      "Bash(node -e \"const p = require\\('./node_modules/youtubei.js/package.json'\\); console.log\\('version:', p.version\\)\")",
+      "Bash(node -e \"const { ClientType } = require\\('youtubei.js/proto'\\); console.log\\(Object.keys\\(ClientType ?? {}\\).slice\\(0,10\\)\\)\")",
+      "Bash(curl -s \"http://localhost:3000/api/audio?videoId=fHI8X4OXluQ\" -I)",
+      "Bash(curl -s \"http://localhost:3000/api/audio?videoId=fHI8X4OXluQ\")"
     ],
     "additionalDirectories": [
       "/Users/akki/Documents/music-web/app/api/artist",
