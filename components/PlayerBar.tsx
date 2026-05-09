@@ -178,7 +178,7 @@ export default function PlayerBar() {
       const ctx = new AudioContext();
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      gain.gain.value = 0; // completely silent
+      gain.gain.value = 0.0001; // inaudible but non-zero — prevents Chrome from throttling background tabs
       osc.connect(gain);
       gain.connect(ctx.destination);
       osc.start();
