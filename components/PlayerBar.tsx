@@ -8,14 +8,6 @@ import {
 } from "lucide-react";
 import { usePlayerStore } from "@/store/playerStore";
 
-declare global {
-  interface Window {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    YT: any;
-    onYouTubeIframeAPIReady: () => void;
-  }
-}
-
 export default function PlayerBar() {
   const {
     track, isPlaying, volume, currentTime, duration, shuffle,
@@ -24,119 +16,99 @@ export default function PlayerBar() {
   } = usePlayerStore();
   const getStoreState = usePlayerStore.getState;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const playerRef = useRef<any>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const videoIdRef = useRef<string | null>(null);
   const [videoId, setVideoId] = useState<string | null>(null);
-  const [apiReady, setApiReady] = useState(false);
-  const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const retryCountRef = useRef(0);
   const bannedIdsRef = useRef<string[]>([]);
   const audioCtxRef = useRef<AudioContext | null>(null);
-  const silentAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  useEffect(() => {
-    if (window.YT?.Player) { setApiReady(true); return; }
-    const tag = document.createElement("script");
-    tag.src = "https://www.youtube.com/iframe_api";
-    document.head.appendChild(tag);
-    window.onYouTubeIframeAPIReady = () => setApiReady(true);
-  }, []);
-
-  const fetchVideoId = (trackId: string, artist: string, name: string, banned: string[] = []) => {
+  const fetchVideoId = (artist: string, name: string, banned: string[] = []) => {
     const excludeParam = banned.length > 0 ? `&exclude=${banned.join(",")}` : "";
     fetch(`/api/stream?artist=${encodeURIComponent(artist)}&track=${encodeURIComponent(name)}${excludeParam}`)
       .then((r) => r.json())
       .then((d) => {
         if (d.videoId) {
-          console.log(`[Player] Video ID resolved for "${name}": ${d.videoId}`);
-          retryCountRef.current = 0;
           setVideoId(d.videoId);
         } else {
-          console.warn(`[Player] No embeddable video for "${name}", skipping to next song`);
+          console.warn(`[Player] No video found for "${name}", skipping`);
           next();
         }
       })
-      .catch((err) => console.error(`[Player] Fetch failed for "${name}":`, err));
+      .catch(() => next());
   };
 
+  // Reset and resolve video ID when track changes
   useEffect(() => {
-    if (retryRef.current) clearTimeout(retryRef.current);
-    retryCountRef.current = 0;
     bannedIdsRef.current = [];
-    if (!track) return;
+    if (!track) { setVideoId(null); return; }
     if (track.youtubeId) {
       setVideoId(track.youtubeId);
     } else {
       setVideoId(null);
-      fetchVideoId(track.id, track.artists[0]?.name ?? '', track.name, []);
+      fetchVideoId(track.artists[0]?.name ?? '', track.name, []);
     }
-    return () => { if (retryRef.current) clearTimeout(retryRef.current); };
   }, [track?.id, track?.youtubeId]);
 
+  // Create the <audio> element once and wire up events
   useEffect(() => {
-    if (!apiReady || !videoId || !containerRef.current) return;
-    if (playerRef.current) {
-      playerRef.current.loadVideoById(videoId);
-      return;
-    }
-    playerRef.current = new window.YT.Player(containerRef.current, {
-      videoId,
-      playerVars: { autoplay: 1, controls: 0, modestbranding: 1, rel: 0, origin: window.location.origin },
-      events: {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        onReady: (e: any) => {
-          console.log(`[Player] YouTube player ready for video: ${videoId}`);
-          e.target.setVolume(volume * 100);
-          if (isPlaying) e.target.playVideo();
-        },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        onStateChange: (e: any) => {
-          const states: Record<number, string> = { [-1]: 'unstarted', 0: 'ended', 1: 'playing', 2: 'paused', 3: 'buffering', 5: 'cued' };
-          console.log(`[Player] State changed: ${states[e.data] ?? e.data}`);
-          if (e.data === window.YT.PlayerState.ENDED) next();
-        },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        onError: (e: any) => {
-          const errors: Record<number, string> = { 2: 'invalid video ID', 5: 'HTML5 player error', 100: 'video removed/private', 101: 'embedding not allowed', 150: 'embedding not allowed' };
-          console.error(`❌ [Player] ${videoId}: ${errors[e.data] ?? `code ${e.data}`}`);
-          if ((e.data === 101 || e.data === 150) && videoId) {
-            const currentTrack = usePlayerStore.getState().track;
-            if (currentTrack && !currentTrack.youtubeId) {
-              bannedIdsRef.current = [...bannedIdsRef.current, videoId];
-              console.log(`🔄 Trying next embeddable video, banned: [${bannedIdsRef.current.join(', ')}]`);
-              fetchVideoId(currentTrack.id, currentTrack.artists[0]?.name ?? '', currentTrack.name, bannedIdsRef.current);
-            }
-          }
-        },
-      },
-    });
-  }, [apiReady, videoId]);
+    const audio = new Audio();
+    audio.preload = 'metadata';
+    audioRef.current = audio;
 
+    const onTimeUpdate = () => setCurrentTime(audio.currentTime);
+    const onDurationChange = () => { if (isFinite(audio.duration)) setDuration(audio.duration); };
+    const onEnded = () => next();
+    const onError = () => {
+      const vid = videoIdRef.current;
+      const { track: t } = getStoreState();
+      if (t && !t.youtubeId && vid) {
+        bannedIdsRef.current = [...bannedIdsRef.current, vid];
+        fetchVideoId(t.artists[0]?.name ?? '', t.name, bannedIdsRef.current);
+      }
+    };
+
+    audio.addEventListener('timeupdate', onTimeUpdate);
+    audio.addEventListener('durationchange', onDurationChange);
+    audio.addEventListener('ended', onEnded);
+    audio.addEventListener('error', onError);
+
+    return () => {
+      audio.pause();
+      audio.src = '';
+      audio.removeEventListener('timeupdate', onTimeUpdate);
+      audio.removeEventListener('durationchange', onDurationChange);
+      audio.removeEventListener('ended', onEnded);
+      audio.removeEventListener('error', onError);
+      audioRef.current = null;
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load audio when videoId changes
   useEffect(() => {
-    const p = playerRef.current;
-    if (!p) return;
-    if (isPlaying) p.playVideo?.();
-    else p.pauseVideo?.();
+    videoIdRef.current = videoId;
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (!videoId) { audio.pause(); audio.src = ''; return; }
+    audio.src = `/api/audio?videoId=${videoId}`;
+    audio.load();
+    const { isPlaying } = getStoreState();
+    if (isPlaying) audio.play().catch(() => {});
+  }, [videoId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Play / pause
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || !audio.src) return;
+    if (isPlaying) audio.play().catch(() => {});
+    else audio.pause();
   }, [isPlaying]);
 
+  // Volume
   useEffect(() => {
-    playerRef.current?.setVolume?.(volume * 100);
+    if (audioRef.current) audioRef.current.volume = volume;
   }, [volume]);
 
-  useEffect(() => {
-    if (!isPlaying) return;
-    const id = setInterval(() => {
-      const p = playerRef.current;
-      if (!p) return;
-      setCurrentTime(p.getCurrentTime?.() ?? 0);
-      setDuration(p.getDuration?.() ?? 0);
-    }, 500);
-    return () => clearInterval(id);
-  }, [isPlaying, setCurrentTime, setDuration]);
-
-  // Media Session API — enables background playback + OS media controls
+  // Media Session API — OS media controls (lock screen, notification bar)
   useEffect(() => {
     if (!track || !('mediaSession' in navigator)) return;
     navigator.mediaSession.metadata = new MediaMetadata({
@@ -148,145 +120,44 @@ export default function PlayerBar() {
         : undefined,
     });
     navigator.mediaSession.setActionHandler('play', () => {
-      playerRef.current?.playVideo?.();
-      usePlayerStore.setState({ isPlaying: true });  // eslint-disable-line
+      audioRef.current?.play();
+      usePlayerStore.setState({ isPlaying: true }); // eslint-disable-line
     });
     navigator.mediaSession.setActionHandler('pause', () => {
-      playerRef.current?.pauseVideo?.();
+      audioRef.current?.pause();
       usePlayerStore.setState({ isPlaying: false }); // eslint-disable-line
     });
     navigator.mediaSession.setActionHandler('nexttrack', () => next());
     navigator.mediaSession.setActionHandler('previoustrack', () => prev());
     navigator.mediaSession.setActionHandler('seekto', (d) => {
-      if (d.seekTime != null) {
-        playerRef.current?.seekTo?.(d.seekTime, true);
+      if (d.seekTime != null && audioRef.current) {
+        audioRef.current.currentTime = d.seekTime;
         setCurrentTime(d.seekTime);
       }
     });
-  }, [track]);
+  }, [track]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Keep OS media controls in sync with play state
   useEffect(() => {
     if (!('mediaSession' in navigator)) return;
     navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
   }, [isPlaying]);
 
-  // Silent Web Audio node — registers this tab as having active audio output.
-  // Without this, Chrome suspends the YouTube iframe when the tab goes to background.
+  // Silent AudioContext oscillator — belt-and-suspenders alongside the real <audio> element
   useEffect(() => {
     const setup = () => {
       if (audioCtxRef.current) return;
       const ctx = new AudioContext();
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      gain.gain.value = 0.0001; // inaudible but non-zero — prevents Chrome from throttling background tabs
+      gain.gain.value = 0.0001;
       osc.connect(gain);
       gain.connect(ctx.destination);
       osc.start();
       audioCtxRef.current = ctx;
-
-      // Auto-resume the moment Chrome suspends the context (fires before timers are throttled)
-      ctx.onstatechange = () => {
-        if (ctx.state === 'suspended') ctx.resume();
-      };
-
-      // Silent <audio> loop — Chrome exempts tabs with a playing HTMLMediaElement from
-      // background throttling. This is more reliable than the Web Audio trick alone.
-      if (!silentAudioRef.current) {
-        const wav = new Uint8Array([
-          0x52,0x49,0x46,0x46, 0x25,0x00,0x00,0x00, // RIFF, size=37
-          0x57,0x41,0x56,0x45, 0x66,0x6D,0x74,0x20, // WAVE, fmt
-          0x10,0x00,0x00,0x00, 0x01,0x00, 0x01,0x00, // chunk=16, PCM, mono
-          0x40,0x1F,0x00,0x00, 0x40,0x1F,0x00,0x00, // 8000 Hz, 8000 B/s
-          0x01,0x00, 0x08,0x00,                      // blockAlign=1, 8-bit
-          0x64,0x61,0x74,0x61, 0x01,0x00,0x00,0x00, // data, 1 byte
-          0x80,                                      // silence (unsigned 8-bit midpoint)
-        ]);
-        const url = URL.createObjectURL(new Blob([wav], { type: 'audio/wav' }));
-        const audio = new Audio(url);
-        audio.loop = true;
-        audio.volume = 0.001;
-        audio.play().catch(() => {});
-        silentAudioRef.current = audio;
-      }
+      ctx.onstatechange = () => { if (ctx.state === 'suspended') ctx.resume(); };
     };
-
-    const handleVisibility = () => {
-      if (audioCtxRef.current?.state === 'suspended') {
-        audioCtxRef.current.resume();
-      }
-    };
-
-    // AudioContext requires a prior user gesture on Chrome
     document.addEventListener('click', setup, { once: true });
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => {
-      document.removeEventListener('click', setup);
-      document.removeEventListener('visibilitychange', handleVisibility);
-    };
-  }, []);
-
-  // Resume playback if Chrome throttled the tab while hidden
-  useEffect(() => {
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible' && playerRef.current) {
-        const { isPlaying } = getStoreState();
-        const state = playerRef.current.getPlayerState?.();
-        if (isPlaying && state !== window.YT?.PlayerState?.PLAYING) {
-          playerRef.current.playVideo?.();
-        }
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, []);
-
-  // Polling keepalive while tab is hidden.
-  // Chrome throttles timers in background tabs, but the poll still fires ~once/min
-  // as a safety net to restart the player if it was paused.
-  useEffect(() => {
-    let hiddenInterval: ReturnType<typeof setInterval> | null = null;
-    let swChannel: MessageChannel | null = null;
-
-    const handleVisibility = () => {
-      if (document.visibilityState === 'hidden') {
-        // Use service worker to keep the app alive
-        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-          swChannel = new MessageChannel();
-          navigator.serviceWorker.controller.postMessage(
-            { type: 'KEEP_ALIVE' },
-            [swChannel.port2]
-          );
-          swChannel.port1.onmessage = () => {
-            // Service worker is alive, keep polling
-          };
-        }
-
-        hiddenInterval = setInterval(() => {
-          const { isPlaying } = getStoreState();
-          const p = playerRef.current;
-          if (p && isPlaying && p.getPlayerState?.() !== window.YT?.PlayerState?.PLAYING) {
-            p.playVideo?.();
-          }
-        }, 1000);
-      } else {
-        if (hiddenInterval) { clearInterval(hiddenInterval); hiddenInterval = null; }
-        if (swChannel) { swChannel.port1.close(); swChannel = null; }
-        // Immediate check on tab focus
-        const { isPlaying } = getStoreState();
-        const p = playerRef.current;
-        if (p && isPlaying && p.getPlayerState?.() !== window.YT?.PlayerState?.PLAYING) {
-          p.playVideo?.();
-        }
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibility);
-      if (hiddenInterval) clearInterval(hiddenInterval);
-      if (swChannel) { swChannel.port1.close(); }
-    };
+    return () => document.removeEventListener('click', setup);
   }, []);
 
   if (!track) return null;
@@ -298,12 +169,6 @@ export default function PlayerBar() {
       className="fixed z-40 bg-[var(--surface)] border-t border-[var(--border)] shadow-lg"
       style={{ left: "var(--sidebar-w)", right: "var(--rightpanel-w)", bottom: "var(--bottomnav-h)" }}
     >
-      {/* Hidden YT player */}
-      <div
-        ref={containerRef}
-        style={{ position: "fixed", bottom: 0, left: "-9999px", width: 1, height: 1, pointerEvents: "none" }}
-      />
-
       {/* Main row: art + info | controls | volume */}
       <div className="flex items-center gap-2 md:gap-3 px-3 md:px-4 pt-2.5 pb-1">
 
@@ -329,7 +194,7 @@ export default function PlayerBar() {
           </button>
         </div>
 
-        {/* Controls — always visible, responsive sizes */}
+        {/* Controls */}
         <div className="flex items-center gap-2 md:gap-4 flex-1 md:flex-none justify-center">
           <button
             onClick={toggleShuffle}
@@ -400,7 +265,7 @@ export default function PlayerBar() {
             onChange={(e) => {
               const t = Number(e.target.value);
               setCurrentTime(t);
-              playerRef.current?.seekTo?.(t, true);
+              if (audioRef.current) audioRef.current.currentTime = t;
             }}
             className="absolute inset-0 w-full opacity-0 cursor-pointer h-full"
           />

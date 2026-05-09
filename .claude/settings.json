@@ -32,7 +32,8 @@
       "Bash(node -e \"const { Innertube } = require\\('youtubei.js'\\); console.log\\('youtubei.js ok'\\)\")",
       "Bash(git fetch *)",
       "Bash(yt-dlp --version)",
-      "Bash(git checkout *)"
+      "Bash(git checkout *)",
+      "Bash(yt-dlp -f \"140/bestaudio[ext=m4a]/bestaudio\" --get-url \"https://www.youtube.com/watch?v=fHI8X4OXluQ\")"
     ],
     "additionalDirectories": [
       "/Users/akki/Documents/music-web/app/api/artist",
