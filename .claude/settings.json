@@ -37,7 +37,10 @@
       "Bash(node -e \"const p = require\\('./node_modules/youtubei.js/package.json'\\); console.log\\('version:', p.version\\)\")",
       "Bash(node -e \"const { ClientType } = require\\('youtubei.js/proto'\\); console.log\\(Object.keys\\(ClientType ?? {}\\).slice\\(0,10\\)\\)\")",
       "Bash(curl -s \"http://localhost:3000/api/audio?videoId=fHI8X4OXluQ\" -I)",
-      "Bash(curl -s \"http://localhost:3000/api/audio?videoId=fHI8X4OXluQ\")"
+      "Bash(curl -s \"http://localhost:3000/api/audio?videoId=fHI8X4OXluQ\")",
+      "Bash(git -C /Users/akki/Documents/music-web add lib/youtube.ts app/api/audio/route.ts)",
+      "Bash(git -C /Users/akki/Documents/music-web diff --cached --stat)",
+      "Bash(git -C /Users/akki/Documents/music-web commit -m ' *)"
     ],
     "additionalDirectories": [
       "/Users/akki/Documents/music-web/app/api/artist",
