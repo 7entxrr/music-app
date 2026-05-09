@@ -1,19 +1,11 @@
 import { NextResponse } from "next/server";
 import { itunesSearch } from "@/lib/itunes";
-import { getYouTubeVideoId } from "@/lib/youtube";
-import type { EnrichedTrack } from "@/lib/types";
 import { generateETag, etagMatches } from "@/lib/etag";
 
 export async function GET(req: Request) {
   try {
     const { tracks } = await itunesSearch("top hits 2024");
-    
-    const enrichedTracks: EnrichedTrack[] = await Promise.all(
-      tracks.slice(0, 20).map(async (t) => {
-        const youtubeId = await getYouTubeVideoId(t.artists[0]?.name ?? "", t.name).catch(() => null);
-        return { ...t, youtubeId: youtubeId ?? undefined };
-      })
-    );
+    const enrichedTracks = tracks.slice(0, 20);
 
     const data = { tracks: enrichedTracks };
     const etag = generateETag(data);

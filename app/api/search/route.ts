@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { itunesSearch } from "@/lib/itunes";
-import { getYouTubeVideoId } from "@/lib/youtube";
 import type { EnrichedTrack } from "@/lib/types";
 
 export async function GET(req: NextRequest) {
@@ -10,16 +9,10 @@ export async function GET(req: NextRequest) {
   try {
     const { tracks, artists, albums } = await itunesSearch(q);
 
-    const enrichedTracks: EnrichedTrack[] = await Promise.all(
-      tracks.map(async (t) => {
-        const youtubeId = await getYouTubeVideoId(t.artists[0]?.name ?? "", t.name)
-          .catch((err) => {
-            console.error(`YouTube API error for ${t.name}:`, err);
-            return null;
-          });
-        return { ...t, youtubeId: youtubeId ?? undefined };
-      })
-    );
+    // Don't pre-fetch YouTube IDs here — that burns API quota for every
+    // keystroke. The player fetches the ID on demand via /api/stream when
+    // the user actually clicks play.
+    const enrichedTracks: EnrichedTrack[] = tracks;
 
     return NextResponse.json(
       { tracks: enrichedTracks, artists, albums },
@@ -31,6 +24,7 @@ export async function GET(req: NextRequest) {
       }
     );
   } catch (err) {
+    console.error('[/api/search] Unhandled error for query:', q, err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }

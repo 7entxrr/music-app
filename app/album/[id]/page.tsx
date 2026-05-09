@@ -4,7 +4,6 @@ import Image from "next/image";
 import Link from "next/link";
 import type { EnrichedTrack } from "@/lib/types";
 import { itunesLookupAlbum } from "@/lib/itunes";
-import { getYouTubeVideoId } from "@/lib/youtube";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -12,13 +11,7 @@ interface Props {
 
 async function AlbumContent({ id }: { id: string }) {
   const album = await itunesLookupAlbum(id);
-
-  const enrichedTracks: EnrichedTrack[] = await Promise.all(
-    album.tracks.map(async (t) => {
-      const youtubeId = await getYouTubeVideoId(t.artists[0]?.name ?? "", t.name).catch(() => null);
-      return { ...t, youtubeId: youtubeId ?? undefined };
-    })
-  );
+  const enrichedTracks: EnrichedTrack[] = album.tracks;
 
   return (
     <div className="space-y-8">

@@ -74,7 +74,10 @@ async function itunesGet(url: string) {
   }
 
   const res = await optimizedFetch(url, { next: { revalidate: 300 } });
-  if (!res.ok) throw new Error(`iTunes API error ${res.status}`);
+  if (!res.ok) {
+    console.error(`[iTunes] API error ${res.status} for URL: ${url}`);
+    throw new Error(`iTunes API error ${res.status}`);
+  }
   const data = await res.json();
   
   evictOldestIfNeeded();

@@ -8,7 +8,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Missing artist or track" }, { status: 400 });
 
   try {
-    const videoId = await getYouTubeVideoId(artist, track);
+    const excludeParam = req.nextUrl.searchParams.get("exclude");
+    const excludeIds = excludeParam ? excludeParam.split(",").filter(Boolean) : [];
+    const videoId = await getYouTubeVideoId(artist, track, excludeIds);
     return NextResponse.json(
       { videoId },
       {

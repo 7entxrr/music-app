@@ -22,7 +22,12 @@
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
       "Bash(git push *)",
-      "Bash(vercel --prod)"
+      "Bash(vercel --prod)",
+      "Bash(curl -s --max-time 5 \"https://api.piped.yt/search?q=blinding+lights&filter=videos\")",
+      "Bash(curl -s --max-time 5 \"https://invidious.privacyredirect.com/api/v1/search?q=blinding+lights&type=video\")",
+      "Bash(curl -s --max-time 5 \"https://yt.cdaut.de/api/v1/search?q=blinding+lights&type=video\")",
+      "Bash(curl -s -X POST https://www.youtube.com/youtubei/v1/search -H 'Content-Type: application/json' -H 'User-Agent: Mozilla/5.0' -d '{\"query\":\"blinding lights weeknd\",\"params\":\"EgIQAQ==\",\"context\":{\"client\":{\"clientName\":\"WEB\",\"clientVersion\":\"2.20231219.01.00\",\"hl\":\"en\",\"gl\":\"US\"}}}')",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); items=d.get\\('contents',{}\\).get\\('twoColumnSearchResultsRenderer',{}\\).get\\('primaryContents',{}\\).get\\('sectionListRenderer',{}\\).get\\('contents',[{}]\\)[0].get\\('itemSectionRenderer',{}\\).get\\('contents',[]\\); print\\(next\\(\\(i.get\\('videoRenderer',{}\\).get\\('videoId'\\) for i in items if i.get\\('videoRenderer'\\)\\),None\\)\\)\")"
     ],
     "additionalDirectories": [
       "/Users/akki/Documents/music-web/app/api/artist",

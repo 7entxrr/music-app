@@ -58,8 +58,12 @@ export default function SearchPage() {
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
                 {results.artists.map((a) => (
                   <Link key={a.id} href={`/artist/${a.id}`} className="group flex flex-col items-center p-4 rounded-xl bg-[var(--surface)] hover:bg-[var(--surface-2)] transition-colors">
-                    <div className="w-24 h-24 rounded-full bg-[var(--surface-2)] flex items-center justify-center text-2xl font-bold text-[var(--muted)]">
-                      {a.name[0]}
+                    <div className="relative w-24 h-24 rounded-full overflow-hidden bg-[var(--surface-2)] flex items-center justify-center text-2xl font-bold text-[var(--muted)]">
+                      {a.artworkUrl ? (
+                        <Image src={a.artworkUrl} alt={a.name} fill className="object-cover" sizes="96px" />
+                      ) : (
+                        a.name[0]
+                      )}
                     </div>
                     <p className="mt-3 text-sm font-medium text-center truncate w-full">{a.name}</p>
                     <p className="text-xs text-[var(--muted)] capitalize">{a.genre || "Artist"}</p>

@@ -10,7 +10,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   shuffle: false,
   currentTime: 0,
   duration: 0,
-  volume: 0.8,
+  volume: 1,
   spotifyToken: typeof window !== 'undefined' ? localStorage.getItem('spotify_token') : null,
   spotifyRefreshToken: typeof window !== 'undefined' ? localStorage.getItem('spotify_refresh_token') : null,
 

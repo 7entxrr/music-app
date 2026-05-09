@@ -22,12 +22,17 @@ export default function PlayerBar() {
     toggle, next, prev, toggleShuffle,
     setCurrentTime, setDuration, setVolume,
   } = usePlayerStore();
+  const getStoreState = usePlayerStore.getState;
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const playerRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [videoId, setVideoId] = useState<string | null>(null);
   const [apiReady, setApiReady] = useState(false);
+  const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryCountRef = useRef(0);
+  const bannedIdsRef = useRef<string[]>([]);
 
   useEffect(() => {
     if (window.YT?.Player) { setApiReady(true); return; }
@@ -37,17 +42,35 @@ export default function PlayerBar() {
     window.onYouTubeIframeAPIReady = () => setApiReady(true);
   }, []);
 
+  const fetchVideoId = (trackId: string, artist: string, name: string, banned: string[] = []) => {
+    const excludeParam = banned.length > 0 ? `&exclude=${banned.join(",")}` : "";
+    fetch(`/api/stream?artist=${encodeURIComponent(artist)}&track=${encodeURIComponent(name)}${excludeParam}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.videoId) {
+          console.log(`[Player] Video ID resolved for "${name}": ${d.videoId}`);
+          retryCountRef.current = 0;
+          setVideoId(d.videoId);
+        } else {
+          console.warn(`[Player] No embeddable video for "${name}", skipping to next song`);
+          next();
+        }
+      })
+      .catch((err) => console.error(`[Player] Fetch failed for "${name}":`, err));
+  };
+
   useEffect(() => {
+    if (retryRef.current) clearTimeout(retryRef.current);
+    retryCountRef.current = 0;
+    bannedIdsRef.current = [];
     if (!track) return;
     if (track.youtubeId) {
       setVideoId(track.youtubeId);
     } else {
       setVideoId(null);
-      fetch(`/api/stream?artist=${encodeURIComponent(track.artists[0]?.name ?? "")}&track=${encodeURIComponent(track.name)}`)
-        .then((r) => r.json())
-        .then((d) => setVideoId(d.videoId ?? null))
-        .catch(() => {});
+      fetchVideoId(track.id, track.artists[0]?.name ?? '', track.name, []);
     }
+    return () => { if (retryRef.current) clearTimeout(retryRef.current); };
   }, [track?.id, track?.youtubeId]);
 
   useEffect(() => {
@@ -62,12 +85,28 @@ export default function PlayerBar() {
       events: {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         onReady: (e: any) => {
+          console.log(`[Player] YouTube player ready for video: ${videoId}`);
           e.target.setVolume(volume * 100);
           if (isPlaying) e.target.playVideo();
         },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         onStateChange: (e: any) => {
+          const states: Record<number, string> = { [-1]: 'unstarted', 0: 'ended', 1: 'playing', 2: 'paused', 3: 'buffering', 5: 'cued' };
+          console.log(`[Player] State changed: ${states[e.data] ?? e.data}`);
           if (e.data === window.YT.PlayerState.ENDED) next();
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        onError: (e: any) => {
+          const errors: Record<number, string> = { 2: 'invalid video ID', 5: 'HTML5 player error', 100: 'video removed/private', 101: 'embedding not allowed', 150: 'embedding not allowed' };
+          console.error(`❌ [Player] ${videoId}: ${errors[e.data] ?? `code ${e.data}`}`);
+          if ((e.data === 101 || e.data === 150) && videoId) {
+            const currentTrack = usePlayerStore.getState().track;
+            if (currentTrack && !currentTrack.youtubeId) {
+              bannedIdsRef.current = [...bannedIdsRef.current, videoId];
+              console.log(`🔄 Trying next embeddable video, banned: [${bannedIdsRef.current.join(', ')}]`);
+              fetchVideoId(currentTrack.id, currentTrack.artists[0]?.name ?? '', currentTrack.name, bannedIdsRef.current);
+            }
+          }
         },
       },
     });
@@ -94,6 +133,56 @@ export default function PlayerBar() {
     }, 500);
     return () => clearInterval(id);
   }, [isPlaying, setCurrentTime, setDuration]);
+
+  // Media Session API — enables background playback + OS media controls
+  useEffect(() => {
+    if (!track || !('mediaSession' in navigator)) return;
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: track.name,
+      artist: track.artists?.map((a) => a.name).join(', '),
+      album: track.album?.name ?? '',
+      artwork: track.artworkUrl
+        ? [{ src: track.artworkUrl, sizes: '600x600', type: 'image/jpeg' }]
+        : undefined,
+    });
+    navigator.mediaSession.setActionHandler('play', () => {
+      playerRef.current?.playVideo?.();
+      usePlayerStore.setState({ isPlaying: true });  // eslint-disable-line
+    });
+    navigator.mediaSession.setActionHandler('pause', () => {
+      playerRef.current?.pauseVideo?.();
+      usePlayerStore.setState({ isPlaying: false }); // eslint-disable-line
+    });
+    navigator.mediaSession.setActionHandler('nexttrack', () => next());
+    navigator.mediaSession.setActionHandler('previoustrack', () => prev());
+    navigator.mediaSession.setActionHandler('seekto', (d) => {
+      if (d.seekTime != null) {
+        playerRef.current?.seekTo?.(d.seekTime, true);
+        setCurrentTime(d.seekTime);
+      }
+    });
+  }, [track]);
+
+  // Keep OS media controls in sync with play state
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return;
+    navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+  }, [isPlaying]);
+
+  // Resume playback if Chrome throttled the tab while hidden
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && playerRef.current) {
+        const { isPlaying } = getStoreState();
+        const state = playerRef.current.getPlayerState?.();
+        if (isPlaying && state !== window.YT?.PlayerState?.PLAYING) {
+          playerRef.current.playVideo?.();
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, []);
 
   if (!track) return null;
 
