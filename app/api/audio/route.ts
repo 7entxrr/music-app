@@ -12,11 +12,13 @@ async function resolveAudio(videoId: string) {
 
   try {
     const { Innertube, ClientType } = await import('youtubei.js');
-    // generate_session_locally skips YouTube homepage fetch — required on Vercel
-    // datacenter IPs where YouTube serves consent pages instead of real session data
+    // generate_session_locally: no YouTube homepage fetch (Vercel IPs get consent pages)
+    // retrieve_player: false: no player JS fetch (also fails on Vercel)
+    // ANDROID client returns direct signed URLs that work without deciphering
     const yt = await Innertube.create({
       client_type: ClientType.ANDROID,
       generate_session_locally: true,
+      retrieve_player: false,
     });
     const info = await yt.getBasicInfo(videoId);
 
@@ -26,24 +28,9 @@ async function resolveAudio(videoId: string) {
       return null;
     }
 
-    console.log(`[/api/audio] player loaded: ${!!yt.session.player}, format.url present: ${!!format.url}`);
-
-    let url: string | null = null;
-    if (yt.session.player) {
-      try {
-        url = await format.decipher(yt.session.player);
-        console.log(`[/api/audio] decipher succeeded, url prefix: ${url?.slice(0, 80)}`);
-      } catch (decipherErr) {
-        console.error(`❌ [/api/audio] decipher threw for ${videoId}:`, decipherErr);
-        url = format.url ?? null;
-        console.log(`[/api/audio] falling back to raw url, present: ${!!url}`);
-      }
-    } else {
-      url = format.url ?? null;
-    }
-
+    const url = format.url ?? null;
     if (!url) {
-      console.error(`❌ [/api/audio] Audio extraction failed for ${videoId}: could not resolve URL`);
+      console.error(`❌ [/api/audio] Audio extraction failed for ${videoId}: no URL in format`);
       return null;
     }
 
@@ -92,8 +79,6 @@ export async function GET(req: NextRequest) {
       headers: { Range: range },
       cache: 'no-store',
     });
-
-    console.log(`[/api/audio] upstream status: ${upstream.status} for ${videoId}`);
 
     if (upstream.status === 403 || upstream.status === 410) {
       console.error(`❌ [/api/audio] upstream ${upstream.status} — URL rejected by YouTube for ${videoId}`);
