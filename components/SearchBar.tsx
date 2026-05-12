@@ -13,8 +13,8 @@ interface Suggestion {
   type: "track" | "artist";
 }
 
-export default function SearchBar() {
-  const [query, setQuery] = useState("");
+export default function SearchBar({ initialQuery = "" }: { initialQuery?: string }) {
+  const [query, setQuery] = useState(initialQuery);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -30,18 +30,19 @@ export default function SearchBar() {
         throw new Error(`Search failed: ${res.status} ${res.statusText}`);
       }
       const data = await res.json();
-      const tracks: Suggestion[] = (data.tracks?.items ?? []).slice(0, 4).map((t: EnrichedTrack) => ({
+      console.log("[SearchBar] Suggestions response:", JSON.stringify(data, null, 2));
+      const tracks: Suggestion[] = (Array.isArray(data.tracks) ? data.tracks : (data.tracks?.items ?? [])).slice(0, 4).map((t: EnrichedTrack) => ({
         id: t.id,
         name: t.name,
         subtitle: t.artists.map((a) => a.name).join(", "),
         artworkUrl: t.artworkUrl || t.album?.images?.[0]?.url || "",
         type: "track" as const,
       }));
-      const artists: Suggestion[] = (data.artists?.items ?? []).slice(0, 2).map((a: { id: string; name: string; genres: string[]; images: { url: string }[] }) => ({
+      const artists: Suggestion[] = (Array.isArray(data.artists) ? data.artists : (data.artists?.items ?? [])).slice(0, 2).map((a: { id: string; name: string; genres: string[]; images: { url: string }[]; artworkUrl?: string }) => ({
         id: a.id,
         name: a.name,
         subtitle: a.genres?.[0] ?? "Artist",
-        artworkUrl: a.images?.[0]?.url ?? "",
+        artworkUrl: a.artworkUrl ?? a.images?.[0]?.url ?? "",
         type: "artist" as const,
       }));
       setSuggestions([...tracks, ...artists]);
@@ -58,6 +59,10 @@ export default function SearchBar() {
       setLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    setQuery(initialQuery);
+  }, [initialQuery]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
