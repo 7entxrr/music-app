@@ -5,73 +5,73 @@ const CACHE_TTL = 4 * 60 * 60 * 1000;
 
 async function resolveAudio(videoId: string) {
   const hit = urlCache.get(videoId);
-  if (hit && Date.now() - hit.t < CACHE_TTL) return hit;
-
-  // iOS client returns direct unciphered URLs without requiring authentication
-  const res = await fetch('https://www.youtube.com/youtubei/v1/player', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'User-Agent': 'com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X)',
-      'X-YouTube-Client-Name': '5',
-      'X-YouTube-Client-Version': '19.29.1',
-    },
-    body: JSON.stringify({
-      videoId,
-      context: {
-        client: {
-          clientName: 'IOS',
-          clientVersion: '19.29.1',
-          deviceMake: 'Apple',
-          deviceModel: 'iPhone16,2',
-          osName: 'iPhone',
-          osVersion: '17.5.1.21F90',
-          platform: 'MOBILE',
-          hl: 'en',
-          gl: 'US',
-        },
-      },
-    }),
-    signal: AbortSignal.timeout(8000),
-  });
-
-  if (!res.ok) {
-    console.error(`[/api/audio] Innertube ${res.status} for ${videoId}`);
-    return null;
+  if (hit && Date.now() - hit.t < CACHE_TTL) {
+    console.log(`[/api/audio] Cache hit for ${videoId}`);
+    return hit;
   }
 
-  const data = await res.json() as {
-    playabilityStatus?: { status: string };
-    streamingData?: { adaptiveFormats?: Array<{ mimeType?: string; bitrate?: number; contentLength?: string; url?: string }> };
-  };
+  try {
+    const { Innertube, ClientType } = await import('youtubei.js');
+    const yt = await Innertube.create({ client_type: ClientType.ANDROID });
+    const info = await yt.getBasicInfo(videoId);
 
-  const status = data.playabilityStatus?.status;
-  if (status && status !== 'OK') {
-    console.error(`[/api/audio] playabilityStatus=${status} for ${videoId}`);
+    const format = info.chooseFormat({ type: 'audio', quality: 'best' });
+    if (!format) {
+      console.warn(`⚠️ [/api/audio] No audio format found for ${videoId}`);
+      return null;
+    }
+
+    console.log(`[/api/audio] player loaded: ${!!yt.session.player}, format.url present: ${!!format.url}`);
+
+    let url: string | null = null;
+    if (yt.session.player) {
+      try {
+        url = await format.decipher(yt.session.player);
+        console.log(`[/api/audio] decipher succeeded, url prefix: ${url?.slice(0, 80)}`);
+      } catch (decipherErr) {
+        console.error(`❌ [/api/audio] decipher threw for ${videoId}:`, decipherErr);
+        url = format.url ?? null;
+        console.log(`[/api/audio] falling back to raw url, present: ${!!url}`);
+      }
+    } else {
+      url = format.url ?? null;
+    }
+
+    if (!url) {
+      console.error(`❌ [/api/audio] Audio extraction failed for ${videoId}: could not resolve URL`);
+      return null;
+    }
+
+    const mime = (format.mime_type ?? 'audio/mp4').split(';')[0];
+    const clen = Number(format.content_length ?? 0);
+
+    console.log(`✅ [/api/audio] Audio resolved for ${videoId}: mime=${mime} clen=${clen}`);
+    const entry = { url, mime, clen, t: Date.now() };
+    urlCache.set(videoId, entry);
+    return entry;
+  } catch (err) {
+    console.error(`❌ [/api/audio] Audio extraction failed for ${videoId}:`, err);
     return null;
   }
-
-  const formats = (data.streamingData?.adaptiveFormats ?? []).filter(f => f.mimeType?.startsWith('audio/') && f.url);
-  if (formats.length === 0) return null;
-
-  formats.sort((a, b) => (b.bitrate ?? 0) - (a.bitrate ?? 0));
-  const best = formats[0];
-
-  const entry = {
-    url: best.url!,
-    mime: best.mimeType?.split(';')[0] ?? 'audio/mp4',
-    clen: Number(best.contentLength ?? 0),
-    t: Date.now(),
-  };
-  urlCache.set(videoId, entry);
-  return entry;
 }
 
+const CHUNK = 524288; // 512 KB — YouTube 403s on full-file requests
+
 function resolveRange(clientRange: string | null, clen: number): string {
-  if (!clientRange) return `bytes=0-${clen - 1}`;
-  if (!/bytes=\d+-$/.test(clientRange)) return clientRange;
-  const start = clientRange.match(/bytes=(\d+)-/)?.[1] ?? '0';
-  return `bytes=${start}-${clen - 1}`;
+  // Bounded range from client — pass through as-is
+  if (clientRange && /^bytes=\d+-\d+$/.test(clientRange)) return clientRange;
+
+  // Open-ended range: bytes=X-  → cap to X + CHUNK
+  const openEnded = clientRange?.match(/^bytes=(\d+)-$/);
+  if (openEnded) {
+    const start = Number(openEnded[1]);
+    const end = clen > 0 ? Math.min(start + CHUNK - 1, clen - 1) : start + CHUNK - 1;
+    return `bytes=${start}-${end}`;
+  }
+
+  // No range header — request first chunk only
+  const end = clen > 0 ? Math.min(CHUNK - 1, clen - 1) : CHUNK - 1;
+  return `bytes=0-${end}`;
 }
 
 export async function GET(req: NextRequest) {
@@ -88,7 +88,10 @@ export async function GET(req: NextRequest) {
       cache: 'no-store',
     });
 
+    console.log(`[/api/audio] upstream status: ${upstream.status} for ${videoId}`);
+
     if (upstream.status === 403 || upstream.status === 410) {
+      console.error(`❌ [/api/audio] upstream ${upstream.status} — URL rejected by YouTube for ${videoId}`);
       urlCache.delete(videoId);
       return NextResponse.json({ error: 'URL expired, retry' }, { status: 502 });
     }
