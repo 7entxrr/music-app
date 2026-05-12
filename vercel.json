@@ -5,10 +5,5 @@
   "framework": "nextjs",
   "env": {
     "NEXTJS_ENV": "production"
-  },
-  "functions": {
-    "app/api/**/*.ts": {
-      "maxDuration": 10
-    }
   }
 }
