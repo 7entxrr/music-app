@@ -26,6 +26,9 @@ export default function SearchBar() {
     setLoading(true);
     try {
       const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&types=track,artist`);
+      if (!res.ok) {
+        throw new Error(`Search failed: ${res.status} ${res.statusText}`);
+      }
       const data = await res.json();
       const tracks: Suggestion[] = (data.tracks?.items ?? []).slice(0, 4).map((t: EnrichedTrack) => ({
         id: t.id,
@@ -42,8 +45,15 @@ export default function SearchBar() {
         type: "artist" as const,
       }));
       setSuggestions([...tracks, ...artists]);
-    } catch {
+    } catch (error) {
+      console.error('Search error:', error);
       setSuggestions([]);
+      // Show error message to user
+      if (typeof window !== 'undefined') {
+        const errorMessage = error instanceof Error ? error.message : 'Search failed. Please try again.';
+        // You can add a snackbar/toast notification here
+        alert(errorMessage);
+      }
     } finally {
       setLoading(false);
     }

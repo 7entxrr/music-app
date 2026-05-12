@@ -39,7 +39,7 @@ export default async function HomePage() {
       </Suspense>
       
       {/* Search Bar */}
-      <section className="flex justify-center py-4">
+      <section className="flex justify-center py-4 bg-[var(--surface)] rounded-xl mx-4 md:mx-6">
         <SearchBar />
       </section>
       
