@@ -1,3 +1,11 @@
 name = "music-yt-proxy"
 main = "worker.js"
 compatibility_date = "2024-09-23"
+
+[vars]
+# YouTube session cookies — paste from DevTools → Application → Cookies → youtube.com
+# Required cookies: VISITOR_INFO1_LIVE, SAPISID, __Secure-3PAPISID, LOGIN_INFO, SID, HSID
+# These cookies authenticate requests and bypass IP-based bot detection.
+# Set via: npx wrangler secret put YT_COOKIES
+# Then paste the full Cookie header string, e.g.:
+#   VISITOR_INFO1_LIVE=xxxx; SID=xxxx; HSID=xxxx; SAPISID=xxxx; ...

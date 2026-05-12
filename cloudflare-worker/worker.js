@@ -15,6 +15,35 @@ function json(data, status = 200) {
   });
 }
 
+// Fetch a fresh VISITOR_INFO1_LIVE cookie from YouTube (anonymous session).
+// This visitor token, when sent with Innertube API calls, bypasses IP-based bot detection.
+let cachedVisitorCookie = null;
+let visitorCookieFetchedAt = 0;
+
+async function getVisitorCookie() {
+  // Refresh every 12 hours
+  if (cachedVisitorCookie && Date.now() - visitorCookieFetchedAt < 12 * 60 * 60 * 1000) {
+    return cachedVisitorCookie;
+  }
+  try {
+    const res = await fetch('https://www.youtube.com/', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+      redirect: 'follow',
+    });
+    // Extract Set-Cookie header for VISITOR_INFO1_LIVE
+    const setCookie = res.headers.get('set-cookie') ?? '';
+    const match = setCookie.match(/VISITOR_INFO1_LIVE=([^;]+)/);
+    if (match) {
+      cachedVisitorCookie = `VISITOR_INFO1_LIVE=${match[1]}`;
+      visitorCookieFetchedAt = Date.now();
+    }
+  } catch {}
+  return cachedVisitorCookie;
+}
+
 // --- YouTube search via HTML scraping ---
 async function searchYouTube(query) {
   const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&sp=EgIQAQ%3D%3D`;
@@ -37,17 +66,28 @@ async function searchYouTube(query) {
 }
 
 // Try one Innertube client for one video. Returns { url, mime, clen } or throws.
-async function tryClient(videoId, client) {
+// env: Cloudflare env bindings (for YT_COOKIES secret)
+// clientIp: forwarded browser IP (passed as X-Forwarded-For)
+async function tryClient(videoId, client, env = {}, clientIp = null) {
+  const headers = {
+    'Content-Type': 'application/json',
+    'User-Agent': client.userAgent,
+    'X-YouTube-Client-Name': client.clientNameInt,
+    'X-YouTube-Client-Version': client.clientVersion,
+    'Origin': 'https://www.youtube.com',
+    'Referer': 'https://www.youtube.com/',
+  };
+  // Use YouTube session cookies to bypass IP-based bot detection.
+  // Priority: stored secret (signed-in account) > auto-fetched anonymous visitor cookie.
+  const cookie = env.YT_COOKIES ?? await getVisitorCookie();
+  if (cookie) headers['Cookie'] = cookie;
+  if (clientIp) {
+    headers['X-Forwarded-For'] = clientIp;
+    headers['X-Real-IP'] = clientIp;
+  }
   const res = await fetch('https://www.youtube.com/youtubei/v1/player', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'User-Agent': client.userAgent,
-      'X-YouTube-Client-Name': client.clientNameInt,
-      'X-YouTube-Client-Version': client.clientVersion,
-      'Origin': 'https://www.youtube.com',
-      'Referer': 'https://www.youtube.com/',
-    },
+    headers,
     body: JSON.stringify({
       videoId,
       context: {
@@ -88,16 +128,13 @@ const IOS = {
   extra: { deviceMake: 'Apple', deviceModel: 'iPhone10,4', osName: 'iPhone', osVersion: '16.7.7.20H330', platform: 'MOBILE' },
 };
 
-// Try up to maxAttempts rounds. Each round fires ANDROID + iOS in parallel.
-// Returns on the first success (whichever client wins the race).
-async function getAudioStream(videoId, maxAttempts = 2) {
+async function getAudioStream(videoId, maxAttempts = 2, env = {}, clientIp = null) {
   const errors = [];
   for (let i = 0; i < maxAttempts; i++) {
     const result = await Promise.any([
-      tryClient(videoId, ANDROID),
-      tryClient(videoId, IOS),
+      tryClient(videoId, ANDROID, env, clientIp),
+      tryClient(videoId, IOS, env, clientIp),
     ]).catch(aggErr => {
-      // AggregateError: all promises rejected
       errors.push(`round ${i + 1}: ${aggErr.errors?.map(e => e.message).join(' | ')}`);
       return null;
     });
@@ -121,7 +158,7 @@ function resolveRange(clientRange, clen) {
 }
 
 export default {
-  async fetch(request) {
+  async fetch(request, env) {
     const url = new URL(request.url);
 
     if (request.method === 'OPTIONS') {
@@ -144,7 +181,7 @@ export default {
     const streamMatch = url.pathname.match(/^\/streams\/([a-zA-Z0-9_-]{11})$/);
     if (streamMatch) {
       const videoId = streamMatch[1];
-      const stream = await getAudioStream(videoId);
+      const stream = await getAudioStream(videoId, 2, env);
       if (!stream?.url) return json({ error: 'No audio stream found', debug: stream?._errors }, 404);
       return json(stream);
     }
@@ -153,7 +190,7 @@ export default {
     const audioMatch = url.pathname.match(/^\/audio\/([a-zA-Z0-9_-]{11})$/);
     if (audioMatch) {
       const videoId = audioMatch[1];
-      const stream = await getAudioStream(videoId);
+      const stream = await getAudioStream(videoId, 2, env);
       if (!stream?.url) return json({ error: 'No audio stream found', debug: stream?._errors }, 404);
 
       const range = resolveRange(request.headers.get('Range'), stream.clen);
