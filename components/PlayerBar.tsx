@@ -21,6 +21,7 @@ export default function PlayerBar() {
   const [videoId, setVideoId] = useState<string | null>(null);
   const bannedIdsRef = useRef<string[]>([]);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const audioRetryRef = useRef(0);
 
   const fetchVideoId = (artist: string, name: string, banned: string[] = [], track?: any) => {
     const excludeParam = banned.length > 0 ? `&exclude=${banned.join(",")}` : "";
@@ -74,7 +75,28 @@ export default function PlayerBar() {
     const onError = () => {
       const vid = videoIdRef.current;
       const { track: t } = getStoreState();
+      const audio = audioRef.current;
+
+      // Retry the same URL up to 4 times before banning the video ID.
+      // Each retry is a new HTTP request → new Cloudflare Worker invocation → potentially different egress IP.
+      if (vid && vid !== 'itunes-preview' && audioRetryRef.current < 4) {
+        audioRetryRef.current += 1;
+        console.log(`[Player] Audio error for ${vid}, retry ${audioRetryRef.current}/4…`);
+        setTimeout(() => {
+          if (audio && videoIdRef.current === vid) {
+            audio.src = `/api/audio?videoId=${vid}&_r=${audioRetryRef.current}`;
+            audio.load();
+            const { isPlaying } = getStoreState();
+            if (isPlaying) audio.play().catch(() => {});
+          }
+        }, 800);
+        return;
+      }
+
+      // All retries exhausted — try a different YouTube video for this track
+      audioRetryRef.current = 0;
       if (t && !t.youtubeId && vid) {
+        console.log(`[Player] All retries failed for ${vid}, trying another video…`);
         bannedIdsRef.current = [...bannedIdsRef.current, vid];
         fetchVideoId(t.artists[0]?.name ?? '', t.name, bannedIdsRef.current);
       }
@@ -99,10 +121,11 @@ export default function PlayerBar() {
   // Load audio when videoId changes
   useEffect(() => {
     videoIdRef.current = videoId;
+    audioRetryRef.current = 0;
     const audio = audioRef.current;
     if (!audio) return;
     if (!videoId) { audio.pause(); audio.src = ''; return; }
-    
+
     if (videoId === 'itunes-preview' && track?.preview_url) {
       console.log(`[Player] Loading iTunes preview for "${track.name}"`);
       audio.src = track.preview_url;
