@@ -12,7 +12,12 @@ async function resolveAudio(videoId: string) {
 
   try {
     const { Innertube, ClientType } = await import('youtubei.js');
-    const yt = await Innertube.create({ client_type: ClientType.ANDROID });
+    // generate_session_locally skips YouTube homepage fetch — required on Vercel
+    // datacenter IPs where YouTube serves consent pages instead of real session data
+    const yt = await Innertube.create({
+      client_type: ClientType.ANDROID,
+      generate_session_locally: true,
+    });
     const info = await yt.getBasicInfo(videoId);
 
     const format = info.chooseFormat({ type: 'audio', quality: 'best' });
