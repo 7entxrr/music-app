@@ -3,79 +3,37 @@ import { NextRequest, NextResponse } from 'next/server';
 const urlCache = new Map<string, { url: string; mime: string; clen: number; t: number }>();
 const CACHE_TTL = 4 * 60 * 60 * 1000;
 
-let sessionCache: { apiKey: string; visitorData: string; t: number } | null = null;
-const SESSION_TTL = 60 * 60 * 1000;
-
-async function getYouTubeSession(): Promise<{ apiKey: string; visitorData: string } | null> {
-  if (sessionCache && Date.now() - sessionCache.t < SESSION_TTL) return sessionCache;
-
-  try {
-    const res = await fetch('https://www.youtube.com/', {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      },
-      cache: 'no-store',
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!res.ok) return null;
-
-    const html = await res.text();
-    const apiKeyMatch = html.match(/"INNERTUBE_API_KEY":"([^"]+)"/);
-    const visitorDataMatch = html.match(/"visitorData":"([^"]+)"/);
-    if (!apiKeyMatch || !visitorDataMatch) {
-      console.error('[/api/audio] Could not extract session from YouTube homepage');
-      return null;
-    }
-
-    sessionCache = { apiKey: apiKeyMatch[1], visitorData: visitorDataMatch[1], t: Date.now() };
-    return sessionCache;
-  } catch (err) {
-    console.error('[/api/audio] Session fetch failed:', err);
-    return null;
-  }
-}
-
 async function resolveAudio(videoId: string) {
   const hit = urlCache.get(videoId);
   if (hit && Date.now() - hit.t < CACHE_TTL) return hit;
 
-  const session = await getYouTubeSession();
-  if (!session) return null;
-
-  const res = await fetch(
-    `https://www.youtube.com/youtubei/v1/player?key=${session.apiKey}&prettyPrint=false`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': 'com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12; GB) gzip',
-        'X-YouTube-Client-Name': '28',
-        'X-YouTube-Client-Version': '1.65.10',
-        'X-Goog-Visitor-Id': session.visitorData,
-      },
-      body: JSON.stringify({
-        videoId,
-        context: {
-          client: {
-            clientName: 'ANDROID_VR',
-            clientVersion: '1.65.10',
-            deviceMake: 'Oculus',
-            deviceModel: 'Quest 3',
-            androidSdkVersion: 32,
-            osName: 'Android',
-            osVersion: '12',
-            platform: 'MOBILE',
-            hl: 'en',
-            gl: 'US',
-            visitorData: session.visitorData,
-          },
+  // iOS client returns direct unciphered URLs without requiring authentication
+  const res = await fetch('https://www.youtube.com/youtubei/v1/player', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'User-Agent': 'com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X)',
+      'X-YouTube-Client-Name': '5',
+      'X-YouTube-Client-Version': '19.29.1',
+    },
+    body: JSON.stringify({
+      videoId,
+      context: {
+        client: {
+          clientName: 'IOS',
+          clientVersion: '19.29.1',
+          deviceMake: 'Apple',
+          deviceModel: 'iPhone16,2',
+          osName: 'iPhone',
+          osVersion: '17.5.1.21F90',
+          platform: 'MOBILE',
+          hl: 'en',
+          gl: 'US',
         },
-      }),
-      signal: AbortSignal.timeout(8000),
-    }
-  );
+      },
+    }),
+    signal: AbortSignal.timeout(8000),
+  });
 
   if (!res.ok) {
     console.error(`[/api/audio] Innertube ${res.status} for ${videoId}`);
@@ -90,8 +48,6 @@ async function resolveAudio(videoId: string) {
   const status = data.playabilityStatus?.status;
   if (status && status !== 'OK') {
     console.error(`[/api/audio] playabilityStatus=${status} for ${videoId}`);
-    // Invalidate session on auth errors so next request fetches fresh one
-    if (status === 'LOGIN_REQUIRED' || status === 'ERROR') sessionCache = null;
     return null;
   }
 
