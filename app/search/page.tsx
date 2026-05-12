@@ -5,6 +5,7 @@ import TrackCard from "@/components/TrackCard";
 import Link from "next/link";
 import type { EnrichedTrack } from "@/lib/types";
 import Image from "next/image";
+import SearchBar from "@/components/SearchBar";
 
 export default function SearchPage() {
   const [query, setQuery] = useState("");
@@ -39,14 +40,7 @@ export default function SearchPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
-      <input
-        type="text"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="Search songs, artists, albums…"
-        className="w-full rounded-full bg-[var(--surface-2)] border border-[var(--border)] text-[var(--foreground)] placeholder-[var(--muted)] px-5 py-2.5 text-sm focus:outline-none focus:border-[var(--accent)] transition-colors mb-6"
-        autoFocus
-      />
+      <SearchBar />
 
       {loading && <p className="text-[var(--muted)]">Searching…</p>}
 

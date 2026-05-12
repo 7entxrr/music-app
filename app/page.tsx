@@ -8,6 +8,7 @@ import HomeTrackList from "@/components/HomeTrackList";
 import SpotifyButton from "@/components/SpotifyButton";
 import SpotifyTokenCapture from "@/components/SpotifyTokenCapture";
 import SpotifyErrorDisplay from "@/components/SpotifyErrorDisplay";
+import SearchBar from "@/components/SearchBar";
 
 async function getHomeData() {
   try {
@@ -36,6 +37,12 @@ export default async function HomePage() {
       <Suspense fallback={null}>
         <SpotifyErrorDisplay />
       </Suspense>
+      
+      {/* Search Bar */}
+      <section className="flex justify-center py-4">
+        <SearchBar />
+      </section>
+      
       {/* Spotify Login Section */}
       <section className="flex justify-center py-4">
         <SpotifyButton />

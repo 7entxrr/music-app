@@ -22,19 +22,32 @@ export default function PlayerBar() {
   const bannedIdsRef = useRef<string[]>([]);
   const audioCtxRef = useRef<AudioContext | null>(null);
 
-  const fetchVideoId = (artist: string, name: string, banned: string[] = []) => {
+  const fetchVideoId = (artist: string, name: string, banned: string[] = [], track?: any) => {
     const excludeParam = banned.length > 0 ? `&exclude=${banned.join(",")}` : "";
+    
+    // Try YouTube first, fallback to iTunes preview
     fetch(`/api/stream?artist=${encodeURIComponent(artist)}&track=${encodeURIComponent(name)}${excludeParam}`)
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error('Stream API failed');
+        return r.json();
+      })
       .then((d) => {
         if (d.videoId) {
           setVideoId(d.videoId);
         } else {
-          console.warn(`[Player] No video found for "${name}", skipping`);
-          next();
+          throw new Error('No video found');
         }
       })
-      .catch(() => next());
+      .catch(() => {
+        // Fallback to iTunes preview URL
+        if (track?.preview_url) {
+          console.log(`[Player] Using iTunes preview for "${name}"`);
+          setVideoId('itunes-preview');
+        } else {
+          console.warn(`[Player] No audio source for "${name}", skipping`);
+          next();
+        }
+      });
   };
 
   // Reset and resolve video ID when track changes
@@ -45,7 +58,7 @@ export default function PlayerBar() {
       setVideoId(track.youtubeId);
     } else {
       setVideoId(null);
-      fetchVideoId(track.artists[0]?.name ?? '', track.name, []);
+      fetchVideoId(track.artists[0]?.name ?? '', track.name, [], track);
     }
   }, [track?.id, track?.youtubeId]);
 
@@ -89,12 +102,19 @@ export default function PlayerBar() {
     const audio = audioRef.current;
     if (!audio) return;
     if (!videoId) { audio.pause(); audio.src = ''; return; }
-    console.log(`[Player] Loading audio for videoId: ${videoId}`);
-    audio.src = `/api/audio?videoId=${videoId}`;
+    
+    if (videoId === 'itunes-preview' && track?.preview_url) {
+      console.log(`[Player] Loading iTunes preview for "${track.name}"`);
+      audio.src = track.preview_url;
+    } else {
+      console.log(`[Player] Loading YouTube audio for videoId: ${videoId}`);
+      audio.src = `/api/audio?videoId=${videoId}`;
+    }
+    
     audio.load();
     const { isPlaying } = getStoreState();
     if (isPlaying) audio.play().catch(() => {});
-  }, [videoId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [videoId, track?.preview_url]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Play / pause
   useEffect(() => {

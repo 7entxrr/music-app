@@ -46,7 +46,8 @@ async function searchYouTubeWithLibrary(query: string): Promise<string[]> {
     
     if (search.videos) {
       for (const video of search.videos) {
-        if (video.type === 'Video' && video.id) {
+        // Type guard to check if this is a Video with an id property
+        if ('id' in video && typeof video.id === 'string') {
           ids.push(video.id);
           if (ids.length >= 5) break;
         }
@@ -77,7 +78,7 @@ async function fetchAllCandidates(artist: string, track: string): Promise<string
 
   for (const q of queries) {
     try {
-      const ids = await searchYouTube(q);
+      const ids = await searchYouTubeWithLibrary(q);
       if (ids.length > 0) {
         console.log(`[YouTube] Found "${ct}" via: "${q}" → ${ids[0]}`);
         for (const id of ids) {
