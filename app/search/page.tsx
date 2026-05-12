@@ -23,17 +23,28 @@ export default function SearchPage() {
     }
 
     setLoading(true);
-    debounceRef.current = setTimeout(async () => {
+    const fetchResults = async () => {
       try {
         const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+        if (!res.ok) {
+          throw new Error(`Search failed: ${res.status} ${res.statusText}`);
+        }
         const data = await res.json();
+        console.log('Search results:', data); // Debug log
         setResults(data);
-      } catch {
+      } catch (error) {
+        console.error('Search error:', error);
         setResults(null);
+        // Show error message to user
+        if (typeof window !== 'undefined') {
+          const errorMessage = error instanceof Error ? error.message : 'Search failed. Please try again.';
+          alert(errorMessage);
+        }
       } finally {
         setLoading(false);
       }
-    }, 300);
+    };
+    debounceRef.current = setTimeout(fetchResults, 300);
 
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [query]);
